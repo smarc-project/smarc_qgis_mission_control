@@ -39,7 +39,7 @@ class TaskType(StrEnum):
     ALARS_TAKE_CONTROL = "alars-take-control"
     ALARS_RELEASE_CONTROL = "alars-release-control"
     # Requries handling of multiple wps not in a list, so not supported for now
-    # ALARS_BT = "alars-bt"
+    ALARS_BT = "alars-bt"
     ALARS_SEARCH = "alars-search"
     ALARS_RECOVER = "alars-recover"
     ALARS_FOLLOW_AUV = "alars-follow-auv"
@@ -47,6 +47,8 @@ class TaskType(StrEnum):
     # Geofence tasks
     SMARC_START_GEOFENCE = "smarc-start-geofence"
     SMARC_STOP_GEOFENCE = "smarc-stop-geofence"
+    SMARC_WAIT = "smarc-wait"
+    SMARC_LOG = "smarc-log"
 
     # Gimbal cam tasks
     GIMBAL_SET_RPY = "gimbal-set-rpy"
@@ -371,53 +373,51 @@ class AlarsReleaseControlTask(Task):
         }
 
 
-# @TaskRegistry.register
-# @dataclass
-# class AlarsBTTask(Task):
-#     type = TaskType.ALARS_BT
-#     waypointsClass = GeoPoint
+@TaskRegistry.register
+@dataclass
+class AlarsBTTask(Task):
+    type = TaskType.ALARS_BT
+    waypointsClass = GeoPoint
 
-#     # Task parameters
-#     num_retries: int = 5
-#     num_retries: Annotated[int, Column("#Retries")] \
-#            = 5
-#     forward_distance: Annotated[float, Unit("m"), Column("ForwardDistance")] \
-#            = 2.0
-#     forward_altitude: Annotated[float, Unit("m"), Column("ForwardAltitude")] \
-#            = 3.0
-#     dipping_altitude: Annotated[float, Unit("m"), Column("DippingAltitude")] \
-#            = 7.0
-#     raising_altitude: Annotated[float, Unit("m"), Column("RaisingAltitude")] \
-#            = 15.0
+    # Task parameters
+    num_retries: int = 5
+    num_retries: Annotated[int, Column("#Retries")] \
+           = 5
+    forward_distance: Annotated[float, Unit("m"), Column("ForwardDistance")] \
+           = 2.0
+    forward_altitude: Annotated[float, Unit("m"), Column("ForwardAltitude")] \
+           = 3.0
+    dipping_altitude: Annotated[float, Unit("m"), Column("DippingAltitude")] \
+           = 7.0
+    raising_altitude: Annotated[float, Unit("m"), Column("RaisingAltitude")] \
+           = 15.0
 
 
-#     @classmethod
-#     def fromJson(cls, data: dict) -> 'AlarsBTTask':
-#         assert(data["name"] == str(cls.type))
-#         return cls(
-#             description = str(data["description"]),
-#             uuid = UUID(data["task-uuid"]),
-#             num_retries = int(data["params"]["num_retries"]),
-#             search_position = GeoPoint.fromJson(data["params"]["search_position"]),
-#             forward_distance = float(data["params"]["forward_distance"]),
-#             forward_altitude = float(data["params"]["forward_altitude"]),
-#             dipping_altitude = float(data["params"]["dipping_altitude"]),
-#             raising_altitude = float(data["params"]["raising_altitude"]),
-#             delivery_position = GeoPoint.fromJson(data["params"]["delivery_position"]),
-#         )
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsBTTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            num_retries = int(data["params"]["num_retries"]),
+            search_position = GeoPoint.fromJson(data["params"]["search_position"]),
+            forward_distance = float(data["params"]["forward_distance"]),
+            forward_altitude = float(data["params"]["forward_altitude"]),
+            dipping_altitude = float(data["params"]["dipping_altitude"]),
+            raising_altitude = float(data["params"]["raising_altitude"]),
+        )
 
-#     def toJson(self) -> dict:
-#         return super().toJson() | {
-#             "params": {
-#                 "num_retries": self.num_retries,
-#                 "search_position": self.search_position.toJson(),
-#                 "forward_distance": self.forward_distance,
-#                 "forward_altitude": self.forward_altitude,
-#                 "dipping_altitude": self.dipping_altitude,
-#                 "raising_altitude": self.raising_altitude,
-#                 "delivery_position": self.delivery_position.toJson(),
-#             }
-#         }
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "num_retries": self.num_retries,
+                "search_position": self.search_position.toJson(),
+                "forward_distance": self.forward_distance,
+                "forward_altitude": self.forward_altitude,
+                "dipping_altitude": self.dipping_altitude,
+                "raising_altitude": self.raising_altitude,
+            }
+        }
 
 @TaskRegistry.register
 @dataclass
@@ -627,4 +627,53 @@ class GimbalStopTask(Task):
     def toJson(self) -> dict:
         return super().toJson() | {
             "params": {}
+        }
+    
+
+@TaskRegistry.register
+@dataclass
+class SmarcWaitTask(Task):
+    type = TaskType.SMARC_WAIT
+
+    # Task parameters
+    timeout: Annotated[float, Unit("s"), Column("Timeout")] = 0.0
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcWaitTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            timeout = float(data["params"]["timeout"]),
+        )   
+    
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "timeout": self.timeout,
+            }
+        }
+    
+@TaskRegistry.register
+@dataclass
+class SmarcLogTask(Task):
+    type = TaskType.SMARC_LOG
+
+    # Task parameters
+    log_str: Annotated[str, Column("LogStr")] = ""
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcLogTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            log_str = str(data["params"]["log_str"]),
+        )   
+    
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "message": self.log_str,
+            }
         }
