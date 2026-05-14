@@ -33,6 +33,18 @@ class TaskType(StrEnum):
     # DEPLOY_PAYLOAD  = "deploy-payload"
     CUSTOM              = "custom-task"
 
+    # Alars tasks
+    ALARS_TAKEOFF = "alars-takeoff"
+    ALARS_LAND    = "alars-land"
+    ALARS_TAKE_CONTROL = "alars-take-control"
+    ALARS_RELEASE_CONTROL = "alars-release-control"
+    # Requries handling of multiple wps not in a list, so not supported for now
+    ALARS_BT = "alars-bt"
+    ALARS_SEARCH = "alars-search"
+    ALARS_RECOVER = "alars-recover"
+    ALARS_FOLLOW_AUV = "alars-follow-auv"
+
+
 @dataclass
 class Task(SchemaMixin):
     """
@@ -267,5 +279,223 @@ class CustomTask(Task):
             "params": {
                 "action-name": self.action,
                 "json-params": self.json,
+            }
+        }
+
+
+#### ALARS Tasks ####
+@TaskRegistry.register
+@dataclass
+class AlarsTakeOffTask(Task):
+    type          = TaskType.ALARS_TAKEOFF
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsTakeOffTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {}
+        }
+    
+@TaskRegistry.register
+@dataclass
+class AlarsLandTask(Task):
+    type          = TaskType.ALARS_LAND
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsLandTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {}
+        }
+    
+@TaskRegistry.register
+@dataclass
+class AlarsTakeControlTask(Task):
+    type          = TaskType.ALARS_TAKE_CONTROL
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsTakeControlTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {}
+        }
+    
+
+@TaskRegistry.register
+@dataclass
+class AlarsReleaseControlTask(Task):
+    type          = TaskType.ALARS_RELEASE_CONTROL
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsReleaseControlTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {}
+        }
+
+
+@TaskRegistry.register
+@dataclass
+class AlarsBTTask(Task):
+    type = TaskType.ALARS_BT
+    waypointsClass = GeoPoint
+
+    # Task parameters
+    num_retries: int = 5
+    num_retries: Annotated[int, Column("#Retries")] \
+           = 5
+    forward_distance: Annotated[float, Unit("m"), Column("ForwardDistance")] \
+           = 2.0
+    forward_altitude: Annotated[float, Unit("m"), Column("ForwardAltitude")] \
+           = 3.0
+    dipping_altitude: Annotated[float, Unit("m"), Column("DippingAltitude")] \
+           = 7.0
+    raising_altitude: Annotated[float, Unit("m"), Column("RaisingAltitude")] \
+           = 15.0
+
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsBTTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            num_retries = int(data["params"]["num_retries"]),
+            search_position = GeoPoint.fromJson(data["params"]["search_position"]),
+            forward_distance = float(data["params"]["forward_distance"]),
+            forward_altitude = float(data["params"]["forward_altitude"]),
+            dipping_altitude = float(data["params"]["dipping_altitude"]),
+            raising_altitude = float(data["params"]["raising_altitude"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "num_retries": self.num_retries,
+                "search_position": self.search_position.toJson(),
+                "forward_distance": self.forward_distance,
+                "forward_altitude": self.forward_altitude,
+                "dipping_altitude": self.dipping_altitude,
+                "raising_altitude": self.raising_altitude,
+            }
+        }
+
+@TaskRegistry.register
+@dataclass
+class AlarsSearchTask(Task):
+    type = TaskType.ALARS_SEARCH
+    waypointClass = GeoPoint
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsSearchTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            search_position = GeoPoint.fromJson(data["params"]["search_position"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "search_position": self.search_position.toJson(),
+            }
+        }
+
+@TaskRegistry.register
+@dataclass
+class AlarsRecoverTask(Task):
+    type = TaskType.ALARS_RECOVER
+
+    # Task parameters
+    forward_distance: Annotated[float, Unit("m"), Column("ForwardDistance")] \
+           = 2.0
+    forward_altitude: Annotated[float, Unit("m"), Column("ForwardAltitude")] \
+           = 3.0
+    dipping_altitude: Annotated[float, Unit("°m"), Column("DippingAltitude")] \
+           = 7.0
+    raising_altitude: Annotated[float, Unit("m"), Column("RaisingAltitude")] \
+           = 15.0
+    no_buoy_radius: Annotated[float, Unit("m"), Column("NoBuoyRadius")] \
+           = -1.0
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsRecoverTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            forward_distance = float(data["params"]["forward_distance"]),
+            forward_altitude = float(data["params"]["forward_altitude"]),
+            dipping_altitude = float(data["params"]["dipping_altitude"]),
+            raising_altitude = float(data["params"]["raising_altitude"]),
+            no_buoy_radius = float(data["params"]["no_buoy_radius"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "forward_distance": self.forward_distance,
+                "forward_altitude": self.forward_altitude,
+                "dipping_altitude": self.dipping_altitude,
+                "raising_altitude": self.raising_altitude,
+                "no_buoy_radius": self.no_buoy_radius,
+            }
+        }
+    
+@TaskRegistry.register
+@dataclass
+class AlarsFollowAUVTask(Task):
+    type = TaskType.ALARS_FOLLOW_AUV
+
+    # Task parameters
+    follow_altitude: Annotated[float, Unit("m"), Column("FollowAltitude")] \
+           = 15.0
+    vulture_radius: Annotated[float, Unit("m"), Column("VultureRadius")] \
+           = 0.0
+    vulture_speed_deg: Annotated[float, Unit("°/s"), Column("VultureSpeedDeg")] \
+           = 10.0
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsFollowAUVTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            follow_altitude = float(data["params"]["follow_altitude"]),
+            vulture_radius = float(data["params"]["vulture_radius"]),
+            vulture_speed_deg = float(data["params"]["vulture_speed_deg"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "follow_altitude": self.follow_altitude,
+                "vulture_radius": self.vulture_radius,
+                "vulture_speed_deg": self.vulture_speed_deg,
             }
         }
