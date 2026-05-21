@@ -365,7 +365,6 @@ class AlarsBTTask(Task):
     waypointsClass = GeoPoint
 
     # Task parameters
-    num_retries: int = 5
     num_retries: Annotated[int, Column("#Retries")] \
            = 5
     forward_distance: Annotated[float, Unit("m"), Column("ForwardDistance")] \
