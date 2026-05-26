@@ -42,3 +42,5 @@ Supported Ubuntu version(s): 22.04 (Python 3.10)
 0. Install PyQt5 via `pip install PyQt5` (or any other way)
 1. Develop UI layout in QtDesigner to generate *.ui files
 2. Produce python files from *.ui files using the PyQt5 command: `pyuic5 --from-imports -o <output.py> <input.ui>`
+3. If you want to add custom icons, place them in src/ui/qtdesigner/custom_icons and run `pyrcc5 src/ui/qtdesigner/resources.qrc -o src/ui/generated/resources_rc.py
+`

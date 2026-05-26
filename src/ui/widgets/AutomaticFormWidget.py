@@ -3,7 +3,7 @@ from enum import Enum
 
 from qgis.PyQt.QtCore import Qt, pyqtSlot, pyqtSignal
 from qgis.PyQt.QtGui import QIntValidator, QDoubleValidator
-from qgis.PyQt.QtWidgets import QWidget, QFormLayout, QLabel, QComboBox, QLineEdit, QDataWidgetMapper
+from qgis.PyQt.QtWidgets import QWidget, QFormLayout, QLabel, QComboBox, QLineEdit, QDataWidgetMapper, QCheckBox
 
 from ...domain.schema import Schema
 
@@ -59,6 +59,9 @@ class AutomaticFormWidget(QWidget):
             return widget
         elif t is str:
             widget = QLineEdit(parent)
+            return widget
+        elif t is bool:
+            widget = QCheckBox(parent)
             return widget
         else:
             raise NotImplementedError

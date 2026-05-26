@@ -32,6 +32,24 @@ class TaskType(StrEnum):
     LOITER              = "loiter"
     # DEPLOY_PAYLOAD  = "deploy-payload"
     CUSTOM              = "custom-task"
+    
+    # Geofence tasks
+    SMARC_START_GEOFENCE = "smarc-start-geofence"
+    SMARC_STOP_GEOFENCE = "smarc-stop-geofence"
+
+    # Basic smarc tasks
+    SMARC_WAIT = "smarc-wait"
+    SMARC_LOG = "smarc-log"
+
+    # Gimbal cam tasks
+    GIMBAL_SET_RPY = "gimbal-set-rpy"
+    GIMBAL_STOP = "gimbal-stop"
+    # for later
+    # GIMBAL_SET_GEOPOINT = "gimbal-set-geopoint"
+    # GIMBAL_TRACK_IMG_POI = "gimbal-track-img-poi"
+    # GIMBAL_TRACK_ODOM_POI = "gimbal-track-odom-poi"
+
+
 
     # Alars tasks
     ALARS_TAKEOFF = "alars-takeoff"
@@ -281,6 +299,181 @@ class CustomTask(Task):
                 "json-params": self.json,
             }
         }
+
+
+#### Geofence Tasks ####
+@TaskRegistry.register
+@dataclass
+class SmarcStartGeofenceTask(Task):
+    type          = TaskType.SMARC_START_GEOFENCE
+    waypointClass = GeoPoint
+
+    # Task parameters
+    ceiling_altitude: Annotated[float, Unit("m"), Column("CeilingAltitude")] \
+           = -1.0
+    floor_altitude: Annotated[float, Unit("m"), Column("FloorAltitude")] \
+           = 1.0
+    stay_inside: Annotated[bool, Column("StayInside")] \
+           = True
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcStartGeofenceTask':
+        assert(data["name"] == str(cls.type))
+        wps = list(map(GeoPoint.fromJson, data["params"]["waypoints"]))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            waypoints = wps,
+            ceiling_altitude = float(data["params"]["ceiling_altitude"]),
+            floor_altitude = float(data["params"]["floor_altitude"]),
+            stay_inside = bool(data["params"]["stay_inside"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "waypoints": [w.toJson() for w in self.waypoints],
+                "ceiling_altitude": self.ceiling_altitude,
+                "floor_altitude": self.floor_altitude,
+                "stay_inside": self.stay_inside
+            }
+        }
+    
+@TaskRegistry.register
+@dataclass
+class SmarcStopGeofenceTask(Task):
+    type = TaskType.SMARC_STOP_GEOFENCE
+
+    # Task parameters
+    reset_geofence: Annotated[bool, Column("ResetGeofence")] \
+        = True
+    reset_islands: Annotated[bool, Column("ResetIslands")] \
+        = True
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcStopGeofenceTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            reset_geofence = bool(data["params"]["reset_geofence"]),
+            reset_islands = bool(data["params"]["reset_islands"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "reset_geofence": self.reset_geofence,
+                "reset_islands": self.reset_islands,
+            }
+        }
+    
+
+@TaskRegistry.register
+@dataclass
+class SmarcWaitTask(Task):
+    type = TaskType.SMARC_WAIT
+
+    # Task parameters
+    timeout: Annotated[float, Unit("s"), Column("Timeout")] \
+        = 0.0
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcWaitTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            timeout = float(data["params"]["timeout"]),
+        )   
+    
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "timeout": self.timeout,
+            }
+        }
+    
+@TaskRegistry.register
+@dataclass
+class SmarcLogTask(Task):
+    type = TaskType.SMARC_LOG
+
+    # Task parameters
+    log_str: Annotated[str, Column("LogStr")] \
+        = ""
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'SmarcLogTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            log_str = str(data["params"]["log_str"]),
+        )   
+    
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "message": self.log_str,
+            }
+        }
+    
+    
+
+#### Gimbal Tasks ####
+@TaskRegistry.register
+@dataclass
+class GimbalSetRPYTask(Task):
+    type = TaskType.GIMBAL_SET_RPY
+
+    # Task parameters
+    roll: Annotated[float, Unit("°"), Column("Roll")] \
+        = 0.0
+    pitch: Annotated[float, Unit("°"), Column("Pitch")] \
+        = 0.0
+    yaw: Annotated[float, Unit("°"), Column("Yaw")] \
+        = 0.0
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'GimbalSetRPYTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            roll = float(data["params"]["roll"]),
+            pitch = float(data["params"]["pitch"]),
+            yaw = float(data["params"]["yaw"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "roll": self.roll,
+                "pitch": self.pitch,
+                "yaw": self.yaw,
+            }
+        }
+    
+@TaskRegistry.register
+@dataclass
+class GimbalStopTask(Task):
+    type          = TaskType.GIMBAL_STOP
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'GimbalStopTask':
+        assert(data["name"] == str(cls.type))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {}
+        }
+    
+
 
 
 #### ALARS Tasks ####
