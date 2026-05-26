@@ -435,7 +435,7 @@ class AlarsRecoverTask(Task):
            = 2.0
     forward_altitude: Annotated[float, Unit("m"), Column("ForwardAltitude")] \
            = 3.0
-    dipping_altitude: Annotated[float, Unit("°m"), Column("DippingAltitude")] \
+    dipping_altitude: Annotated[float, Unit("m"), Column("DippingAltitude")] \
            = 7.0
     raising_altitude: Annotated[float, Unit("m"), Column("RaisingAltitude")] \
            = 15.0
