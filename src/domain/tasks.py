@@ -98,6 +98,11 @@ class TaskRegistry:
         if prevCls:
             raise ValueError(f"Duplicate task type '{taskCls.type}' for "
                              f"{taskCls.__name__} and {prevCls.__name__}")
+        
+        if taskCls.__dict__.get("waypointClass") and not \
+            (issubclass(taskCls, SingleWaypointTask) or issubclass(taskCls, MultiWaypointTask)):
+            raise TypeError(f"Task class {taskCls.__name__} defines a waypointClass, but it is not a SingleWaypointTask subclass!")
+        
         cls.registry[taskCls.type] = taskCls
 
         return taskCls
