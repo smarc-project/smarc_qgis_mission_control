@@ -103,6 +103,10 @@ class TaskRegistry:
             (issubclass(taskCls, SingleWaypointTask) or issubclass(taskCls, MultiWaypointTask)):
             raise TypeError(f"Task class {taskCls.__name__} defines a waypointClass, but it is not a SingleWaypointTask subclass!")
         
+        if issubclass(taskCls, SingleWaypointTask) or issubclass(taskCls, MultiWaypointTask):
+            if not taskCls.__dict__.get("waypointClass"):
+                raise TypeError(f"Task class {taskCls.__name__} is a SingleWaypointTask or MultiWaypointTask subclass, but does not define a waypointClass!")
+        
         cls.registry[taskCls.type] = taskCls
 
         return taskCls
