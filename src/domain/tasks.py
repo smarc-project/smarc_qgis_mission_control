@@ -304,7 +304,7 @@ class CustomTask(Task):
 #### Geofence Tasks ####
 @TaskRegistry.register
 @dataclass
-class SmarcStartGeofenceTask(Task):
+class SmarcStartGeofenceTask(MultiWaypointTask):
     type          = TaskType.SMARC_START_GEOFENCE
     waypointClass = GeoPoint
 
@@ -553,9 +553,9 @@ class AlarsReleaseControlTask(Task):
 
 @TaskRegistry.register
 @dataclass
-class AlarsBTTask(Task):
+class AlarsBTTask(SingleWaypointTask):
     type = TaskType.ALARS_BT
-    waypointsClass = GeoPoint
+    waypointClass = GeoPoint
 
     # Task parameters
     num_retries: Annotated[int, Column("#Retries")] \
@@ -598,7 +598,7 @@ class AlarsBTTask(Task):
 
 @TaskRegistry.register
 @dataclass
-class AlarsSearchTask(Task):
+class AlarsSearchTask(SingleWaypointTask):
     type = TaskType.ALARS_SEARCH
     waypointClass = GeoPoint
 
