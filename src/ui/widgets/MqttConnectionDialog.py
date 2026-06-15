@@ -16,17 +16,32 @@ class MqttConnectionDialog(QDialog):
 
     def ip(self) -> str:
         return self.ui.lineEditIp.text().strip()
+    
+    def setIp(self, ip: str):
+        self.ui.lineEditIp.setText(ip)
 
     def port(self) -> int:
         return int(self.ui.lineEditPort.text().strip())
+    
+    def setPort(self, port: int):
+        self.ui.lineEditPort.setText(str(port))
 
     def username(self) -> str | None:
         value = self.ui.lineEditUsername.text().strip()
         return value if value else None
+    
+    def setUsername(self, username: str):
+        self.ui.lineEditUsername.setText(username)
 
     def password(self) -> str | None:
         value = self.ui.lineEditPassword.text().strip()
         return value if value else None
+    
+    def setPassword(self, password: str):
+        self.ui.lineEditPassword.setText(password)
 
     def context(self) -> str:
         return self.ui.lineEditContext.text().strip()
+    
+    def setContext(self, context: str):
+        self.ui.lineEditContext.setText(context)
