@@ -224,7 +224,7 @@ class FleetMapManager(QObject):
             return
 
         iface.mapCanvas().zoomToFeatureIds(self._waypointLayer, [vehicle.lastFid])
-        iface.mapCanvas().zoomScale(25000) # zoom to fixed scale (e.g. 1:500)
+        iface.mapCanvas().zoomScale(1000) # zoom to fixed scale (e.g. 1:500)
 
     def clearAllVehicleMarkers(self):
         if self._waypointLayer is None:
