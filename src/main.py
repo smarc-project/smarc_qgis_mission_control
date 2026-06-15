@@ -85,7 +85,7 @@ class SMaRCMissionControlPlugin(QObject):
         
         # Spacer
         self.toolbarSpacer = QWidget(self.iface.mainWindow())
-        self.toolbarSpacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toolbarSpacer.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.toolbar.addWidget(self.toolbarSpacer)
 
         # Mqtt button
@@ -101,6 +101,7 @@ class SMaRCMissionControlPlugin(QObject):
         self.settingsAction.triggered.connect(self.onSettingsActionClicked)
         self.toolbar.addAction(self.settingsAction)
         self.settingsButton = self.toolbar.widgetForAction(self.settingsAction)
+
 
         
 
