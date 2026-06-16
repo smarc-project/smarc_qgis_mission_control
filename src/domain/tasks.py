@@ -61,6 +61,7 @@ class TaskType(StrEnum):
     ALARS_SEARCH = "alars-search"
     ALARS_RECOVER = "alars-recover"
     ALARS_FOLLOW_AUV = "alars-follow-auv"
+    ALARS_PING_SEARCH = "alars-ping-search"
 
     # succorfish ping tasks
     SMARC_MODEM_PING = "smarc-modem-ping"
@@ -710,6 +711,51 @@ class AlarsFollowAUVTask(Task):
                 "vulture_speed_deg": self.vulture_speed_deg,
             }
         }
+    
+
+
+@TaskRegistry.register
+@dataclass
+class AlarsPingSearch(MultiWaypointTask):
+    type = TaskType.ALARS_PING_SEARCH
+    waypointClass = GeoPoint
+
+    # Task parameters
+    modem_to_ping: Annotated[int, Column("ModemToPing")] \
+           = 111
+    modem_depth: Annotated[float, Unit("m"), Column("ModemDepth")] \
+           = 0.0
+    dipping_altitude: Annotated[float, Unit("m"), Column("DippingAltitude")] \
+           = 0.0
+    max_pings: Annotated[int, Column("MaxPings")] \
+           = 5
+
+    @classmethod
+    def fromJson(cls, data: dict) -> 'AlarsPingSearch':
+        assert(data["name"] == str(cls.type))
+        _ping_positions = list(map(GeoPoint.fromJson, data["params"]["ping_positions"]))
+        return cls(
+            description = str(data["description"]),
+            uuid = UUID(data["task-uuid"]),
+            ping_positions = _ping_positions,
+            modem_to_ping = int(data["params"]["modem_to_ping"]),
+            modem_depth = float(data["params"]["modem_depth"]),
+            dipping_altitude = float(data["params"]["dipping_altitude"]),
+            max_pings = int(data["params"]["max_pings"]),
+        )
+
+    def toJson(self) -> dict:
+        return super().toJson() | {
+            "params": {
+                "modem_to_ping": self.modem_to_ping,
+                "modem_depth": self.modem_depth,
+                "dipping_altitude": self.dipping_altitude,
+                "max_pings": self.max_pings,
+                "ping_positions": [w.toJson() for w in self.ping_positions]
+            }
+        }
+    
+
     
 @TaskRegistry.register
 @dataclass
