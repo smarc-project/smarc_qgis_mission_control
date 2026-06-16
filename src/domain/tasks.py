@@ -691,6 +691,9 @@ class AlarsFollowAUVTask(Task):
            = 0.0
     vulture_speed_deg: Annotated[float, Unit("°/s"), Column("VultureSpeedDeg")] \
            = 10.0
+    timeout: Annotated[float, Unit("s"), Column("timeout")] \
+        = 30
+
 
     @classmethod
     def fromJson(cls, data: dict) -> 'AlarsFollowAUVTask':
@@ -701,6 +704,7 @@ class AlarsFollowAUVTask(Task):
             follow_altitude = float(data["params"]["follow_altitude"]),
             vulture_radius = float(data["params"]["vulture_radius"]),
             vulture_speed_deg = float(data["params"]["vulture_speed_deg"]),
+            timeout = float(data["params"]["timeout"]),
         )
 
     def toJson(self) -> dict:
@@ -709,6 +713,7 @@ class AlarsFollowAUVTask(Task):
                 "follow_altitude": self.follow_altitude,
                 "vulture_radius": self.vulture_radius,
                 "vulture_speed_deg": self.vulture_speed_deg,
+                "timeout": self.timeout,
             }
         }
     
