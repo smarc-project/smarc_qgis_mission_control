@@ -733,11 +733,11 @@ class AlarsPingSearch(MultiWaypointTask):
     @classmethod
     def fromJson(cls, data: dict) -> 'AlarsPingSearch':
         assert(data["name"] == str(cls.type))
-        _ping_positions = list(map(GeoPoint.fromJson, data["params"]["ping_positions"]))
+        wps = list(map(GeoPoint.fromJson, data["params"]["waypoints"]))
         return cls(
             description = str(data["description"]),
             uuid = UUID(data["task-uuid"]),
-            ping_positions = _ping_positions,
+            waypoints = wps,
             modem_to_ping = int(data["params"]["modem_to_ping"]),
             modem_depth = float(data["params"]["modem_depth"]),
             dipping_altitude = float(data["params"]["dipping_altitude"]),
@@ -751,7 +751,7 @@ class AlarsPingSearch(MultiWaypointTask):
                 "modem_depth": self.modem_depth,
                 "dipping_altitude": self.dipping_altitude,
                 "max_pings": self.max_pings,
-                "ping_positions": [w.toJson() for w in self.ping_positions]
+                "waypoints": [w.toJson() for w in self.waypoints]
             }
         }
     
