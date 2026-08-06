@@ -1,6 +1,5 @@
-from typing import NoReturn
 from enum import Enum
-
+from typing import NoReturn
 
 __all__ = ["StrEnum"]
 
