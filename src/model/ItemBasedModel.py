@@ -1,8 +1,7 @@
-from qgis.PyQt.QtCore import Qt, QAbstractTableModel, QModelIndex
-from qgis.PyQt.QtGui import QValidator
-from qgis.PyQt.QtWidgets import QWidget
-
 from typing import Any, Sequence
+
+from qgis.PyQt.QtCore import QAbstractTableModel, QModelIndex, Qt
+from qgis.PyQt.QtWidgets import QWidget
 
 __all__ = ["ItemBasedModel"]
 

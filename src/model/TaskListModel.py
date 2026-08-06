@@ -1,11 +1,6 @@
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
-
 from uuid import UUID
+
+from qgis.PyQt.QtCore import QModelIndex, Qt, QVariant, pyqtSlot
 
 from ..domain.tasks import Task
 from ..mission.MissionDocument import MissionDocument

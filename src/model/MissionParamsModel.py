@@ -1,10 +1,9 @@
-from qgis.PyQt.QtCore import Qt, pyqtSlot, QVariant, QModelIndex
+from qgis.PyQt.QtCore import QModelIndex, Qt, QVariant, pyqtSlot
 from qgis.PyQt.QtWidgets import QWidget
 
 from ..domain.missionplan import MissionPlan
 from ..mission.MissionDocument import MissionDocument
 from .SchemaBasedModel import SchemaBasedModel
-
 
 __all__ = ["MissionParamsModel"]
 

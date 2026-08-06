@@ -1,4 +1,4 @@
-from qgis.PyQt.QtCore import Qt, QVariant, QModelIndex
+from qgis.PyQt.QtCore import QModelIndex, Qt
 from qgis.PyQt.QtWidgets import QWidget
 
 from ..domain.schema import Schema
