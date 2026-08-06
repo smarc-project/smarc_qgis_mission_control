@@ -1,9 +1,9 @@
-from typing import Annotated
 from dataclasses import dataclass, field
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from .schema import Schema, SchemaMixin, Column, Unit
 from .jsoncodec import JsonCodec
+from .schema import Column, SchemaMixin, Unit
 
 __all__ = ["Waypoint", "AUVWaypoint", "GeoPoint"]
 

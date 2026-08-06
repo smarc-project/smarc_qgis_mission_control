@@ -1,7 +1,6 @@
 from dataclasses import MISSING, dataclass, fields
-from typing import (get_origin, get_args, get_type_hints,
-                    Annotated, Any, Type, Sequence)
 from enum import Enum
+from typing import Annotated, Any, Sequence, get_args, get_origin, get_type_hints
 
 __all__ = [
     "Unit",
