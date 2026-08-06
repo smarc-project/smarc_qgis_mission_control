@@ -1,14 +1,9 @@
-from uuid import UUID
 from typing import Any
 
-from qgis.PyQt.QtCore import pyqtSlot, pyqtSignal, QObject
 from qgis.PyQt.QtWidgets import QUndoCommand
-from qgis.core import QgsPointXY
 
-from ..domain.missionplan import MissionPlan
-from ..domain.waypoints import Waypoint
 from ..domain.tasks import Task
-
+from ..domain.waypoints import Waypoint
 
 __all__ = [
     "MissionUndoCommand",

@@ -1,22 +1,41 @@
-from uuid import UUID, uuid4
-from typing import Any
-from pathlib import Path
 import json
+from pathlib import Path
+from typing import Any
+from uuid import UUID, uuid4
 
-from qgis.PyQt.QtCore import pyqtSlot, pyqtSignal, QObject
-from qgis.PyQt.QtWidgets import QUndoCommand
 from qgis.core import QgsPointXY
 
+from qgis.PyQt.QtCore import QObject, pyqtSignal
+
 from ..domain.missionplan import MissionPlan
+from ..domain.tasks import (
+    PendingWaypointTask,
+    Task,
+    TaskRegistry,
+    UnsupportedTaskCreationError,
+)
+from ..domain.taskspatial import (
+    iterTaskWaypoints,
+    locateTaskWaypoint,
+    waypointListFields,
+    waypointListType,
+    waypointType,
+)
 from ..domain.waypoints import Waypoint
-from ..domain.tasks import (Task, TaskRegistry, PendingWaypointTask,
-                            UnsupportedTaskCreationError)
-from ..domain.taskspatial import (iterTaskWaypoints, locateTaskWaypoint,
-                                  waypointListFields, waypointListType,
-                                  waypointType)
 from .MissionIndex import MissionIndex
 from .MissionLayerBridge import MissionLayerBridge
-from .MissionUndoCommand import *
+from .MissionUndoCommand import (
+    AddTaskUndoCommand,
+    AddWaypointUndoCommand,
+    DeleteTaskUndoCommand,
+    DeleteWaypointUndoCommand,
+    MissionUndoCommand,
+    SetMissionFieldUndoCommand,
+    SetTaskDescriptionUndoCommand,
+    SetTaskFieldUndoCommand,
+    SetWaypointFieldUndoCommand,
+    SetWaypointPositionUndoCommand,
+)
 
 
 class MissionDocument(QObject):

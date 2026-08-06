@@ -1,20 +1,31 @@
-from uuid import UUID
-from dataclasses import dataclass
 from contextlib import contextmanager
+from dataclasses import dataclass
+from uuid import UUID
 
-from qgis.PyQt.QtCore import pyqtSlot, pyqtSignal, QObject, QVariant
+from qgis.core import (
+    QgsFeature,
+    QgsFeatureRenderer,
+    QgsField,
+    QgsGeometry,
+    QgsLayerTreeGroup,
+    QgsPointXY,
+    QgsProject,
+    QgsProperty,
+    QgsSimpleMarkerSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsSymbol,
+    QgsVectorLayer,
+)
+
+from qgis.PyQt.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor
-from qgis.core import QgsProject, QgsField, QgsFeature, QgsVectorLayer, QgsGeometry, \
-    QgsPointXY, QgsLayerTreeGroup, QgsProperty, QgsSymbol, QgsSimpleMarkerSymbolLayer, \
-    QgsSingleSymbolRenderer, QgsFeatureRenderer
 
 from ..compat import StrEnum, assert_never
 from ..domain.missionplan import MissionPlan
-from ..domain.waypoints import Waypoint
 from ..domain.tasks import Task
 from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.waypoints import Waypoint
 from .MissionTracks import MissionTracks
-
 
 __all__ = ["MissionLayerBridge"]
 
