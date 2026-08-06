@@ -1,13 +1,9 @@
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
+from qgis.PyQt.QtCore import QObject
 
-from .MqttService import MqttService
-from .FleetState import FleetState
 from .FleetMapManager import FleetMapManager
+from .FleetState import FleetState
+from .MqttService import MqttService
+
 
 class FleetContext(QObject):
     def __init__(self, parent: QObject | None = None):

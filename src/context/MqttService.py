@@ -1,23 +1,24 @@
-import re
 import json
-import threading
+import os
+import re
 import socket
-from uuid import UUID, uuid4
-from dataclasses import dataclass
+import sys
+import threading
 from copy import deepcopy
+from dataclasses import dataclass
+from uuid import UUID, uuid4
 
-from qgis.PyQt.QtCore import QObject, pyqtSlot, pyqtSignal
+from qgis.PyQt.QtCore import QObject, pyqtSignal, pyqtSlot
 
 # Import bundled MQTT
-import os, sys
 path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'third_party')
 sys.path.insert(0, path)
 import paho.mqtt.client as mqtt
 
 from ..compat import StrEnum
-from ..domain.waraps import *
-from ..domain.waypoints import GeoPoint
 from ..domain.missionplan import MissionPlan
+from ..domain.waraps import WaraPsAvailableTask, WaraPsExecutingTask
+from ..domain.waypoints import GeoPoint
 
 
 @dataclass
