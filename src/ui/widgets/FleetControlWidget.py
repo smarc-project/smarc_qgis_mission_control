@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtWidgets import QFrame, QWidget
 
