@@ -1,5 +1,5 @@
-from qgis.PyQt.QtWidgets import QWidget, QDialog
 from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtWidgets import QDialog, QWidget
 
 from ..generated.MqttConnectionDialogUi import Ui_MqttConnectionDialog
 

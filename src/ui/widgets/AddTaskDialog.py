@@ -1,7 +1,6 @@
-from qgis.PyQt.QtWidgets import QWidget, QDialog
+from qgis.PyQt.QtWidgets import QDialog, QWidget
 
 from ...domain.tasks import TaskRegistry
-
 from ..generated.AddTaskDialogUi import Ui_AddTaskDialog
 
 __all__ = ["AddTaskDialog"]

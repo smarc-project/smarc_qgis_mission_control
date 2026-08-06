@@ -1,15 +1,13 @@
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
+from qgis.core import QgsApplication
 
-from ..generated.VehicleCardWidgetUi import Ui_VehicleCardWidget
+from qgis.PyQt.QtCore import QSignalBlocker, QSize, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QMovie
+from qgis.PyQt.QtWidgets import QHeaderView, QWidget
+
+from ...context.FleetState import VehicleState
 from ...domain.waraps import WaraPsExecutingTask
 from ...model.SchemaBasedModel import SchemaBasedModel
-from ...context.FleetState import VehicleState
-from typing import *
-from dataclasses import dataclass
+from ..generated.VehicleCardWidgetUi import Ui_VehicleCardWidget
 
 
 class VehicleCardWidget(QWidget):

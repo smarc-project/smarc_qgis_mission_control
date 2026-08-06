@@ -1,6 +1,5 @@
-from qgis.PyQt.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer
-from qgis.PyQt.QtWidgets import QWidget, QFrame
-from qgis.core import QgsApplication
+from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtWidgets import QFrame, QWidget
 
 from ...context.FleetState import FleetState
 from ..generated.FleetControlWidgetUi import Ui_FleetControlWidget

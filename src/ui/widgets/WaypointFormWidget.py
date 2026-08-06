@@ -1,20 +1,15 @@
-from qgis.PyQt.QtWidgets import QWidget
-from qgis.core import QgsApplication, QgsVectorLayer
-
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
-
 from typing import Type
 from uuid import UUID
 
-from ...mission.MissionContext import MissionContext
-from ...mission.MissionDocument import MissionDocument
+from qgis.core import QgsApplication
+
+from qgis.PyQt.QtCore import pyqtSignal, pyqtSlot
+from qgis.PyQt.QtWidgets import QAction, QWidget
+
 from ...domain.tasks import Task
 from ...domain.waypoints import Waypoint
+from ...mission.MissionContext import MissionContext
+from ...mission.MissionDocument import MissionDocument
 from ...model.WaypointListModel import WaypointListModel
 from ..generated.WaypointFormWidgetUi import Ui_WaypointFormWidget
 from .AutomaticFormWidget import AutomaticFormWidget

@@ -1,15 +1,10 @@
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
-from qgis.utils import iface
-from pathlib import Path
+from qgis.PyQt.QtCore import Qt, pyqtSlot
+from qgis.PyQt.QtWidgets import QWidget
 
 from ...context.FleetContext import FleetContext
 from ..generated.LiveViewWidgetUi import Ui_LiveViewWidget
 from .VehicleLiveViewWidget import VehicleLiveViewWidget
+
 
 class LiveViewWidget(QWidget):
     _fleetContext: FleetContext
