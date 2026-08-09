@@ -178,7 +178,7 @@ class MissionDocument(QObject):
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
             for waypoint in iterTaskWaypoints(task):
-                feat = self.layerBridge._waypointToFeature(task.uuid, waypoint)
+                feat = self.layerBridge._waypointToFeature(task.uuid, task.description, waypoint)
                 self.layerBridge.waypointLayer.addFeature(feat)
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
@@ -232,7 +232,7 @@ class MissionDocument(QObject):
 
     # TODO: accept index?
     # TODO: other waypoint parameters
-    def addWaypoint(self, taskUuid: UUID, latitude: float, longitude: float,
+    def addWaypoint(self, taskUuid: UUID, description: str, latitude: float, longitude: float,
                     waypointUuid: UUID | None = None,
                     fieldName: str | None = None) -> None:
         task = self.index.taskByUuid(taskUuid)
@@ -260,7 +260,7 @@ class MissionDocument(QObject):
             uuid = waypointUuid or uuid4()
         )
 
-        feat = self.layerBridge._waypointToFeature(taskUuid, waypoint)
+        feat = self.layerBridge._waypointToFeature(taskUuid, description, waypoint)
         cmd = AddWaypointUndoCommand(self, task, field.name, waypoint)
 
         with self.layerBridge.customEditCommand("Add waypoint"):
@@ -354,9 +354,12 @@ class MissionDocument(QObject):
         # TODO: Location should be changed via setWaypointPosition
         assert(fieldId > 1)
 
+        spec = waypoint.schema().fields[fieldId]
         oldValue = waypoint.schema().fields[fieldId].value(waypoint)
         cmd = SetWaypointFieldUndoCommand(self, waypoint, fieldId, value, oldValue)
         with self.layerBridge.customEditCommand("Modify waypoint"):
+            if spec.name == 'tolerance':
+                self.layerBridge.setWaypointAttribute(waypointUuid, 'tolerance', value)
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
@@ -394,4 +397,5 @@ class MissionDocument(QObject):
 
     def _setTaskDescription(self, task: Task, value: str) -> None:
         task.description = value
+        self.layerBridge.updateTaskDescriptionLabel(task.uuid, value)
         self.taskChanged.emit(task.uuid)
