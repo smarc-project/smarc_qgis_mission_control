@@ -1,18 +1,15 @@
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
+from typing import Type
 from uuid import UUID
 
-from typing import Type
-from dataclasses import replace as dtReplace
+from qgis.core import QgsApplication
 
-from ...mission.MissionContext import MissionContext
-from ...mission.MissionDocument import MissionDocument
+from qgis.PyQt.QtCore import QItemSelection, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtWidgets import QAbstractItemDelegate, QAction, QHeaderView, QWidget
+
 from ...domain.tasks import Task
 from ...domain.waypoints import Waypoint
+from ...mission.MissionContext import MissionContext
+from ...mission.MissionDocument import MissionDocument
 from ...model.WaypointListModel import WaypointListModel
 from ..generated.WaypointTableWidgetUi import Ui_WaypointTableWidget
 

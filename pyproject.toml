@@ -1,0 +1,67 @@
+[project]
+name = "smarc_qgis_mission_control"
+version = "0.0.0"
+requires-python = "==3.10.*"
+
+[tool.mypy]
+python_version = "3.10"
+pretty = true
+warn_return_any = true
+exclude = [
+    "^src/ui/generated/",
+    "^src/third_party/",
+]
+
+# PyQt through QGIS
+[[tool.mypy.overrides]]
+module = ["qgis.PyQt.*"]
+follow_untyped_imports = true
+
+# TODO: ignore paho for now
+[[tool.mypy.overrides]]
+module = ["paho", "paho.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+extend-exclude = [
+    "src/ui/generated/",
+    "src/third_party/",
+]
+force-exclude = true
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    # Multiple imports on one line
+    "E401",
+    # Module imported but unused
+    "F401",
+    # Star imports
+    "F403",
+    # Name is undefined, or comes from star imports
+    "F405",
+    # Undefined name
+    "F821",
+    # Unsorted imports
+    "I001",
+]
+
+[tool.ruff.lint.isort]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "qt",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+qt = ["qgis.PyQt", "qgis.PyQt.*"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "qgis-stubs>=0.4.0",
+    "ruff>=0.16.1",
+]

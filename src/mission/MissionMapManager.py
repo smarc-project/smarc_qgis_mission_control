@@ -1,17 +1,20 @@
 from dataclasses import dataclass
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
+from qgis.core import (
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
+    QgsPointXY,
+    QgsProject,
+)
+from qgis.gui import QgsMapCanvas, QgsMapMouseEvent, QgsMapTool, QgsRubberBand
 from qgis.utils import iface
 
-from ..domain.missionplan import MissionPlan
-from ..domain.tasks import PendingWaypointTask
+from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QAction
 
+from ..domain.tasks import PendingWaypointTask
 
 __all__ = ["MissionMapManager"]
 

@@ -1,14 +1,15 @@
-from uuid import UUID
-from typing import Any
+from __future__ import annotations
 
-from qgis.PyQt.QtCore import pyqtSlot, pyqtSignal, QObject
+from typing import TYPE_CHECKING, Any
+
 from qgis.PyQt.QtWidgets import QUndoCommand
-from qgis.core import QgsPointXY
 
-from ..domain.missionplan import MissionPlan
-from ..domain.waypoints import Waypoint
 from ..domain.tasks import Task
+from ..domain.waypoints import Waypoint
 
+if TYPE_CHECKING:
+    # Prevent circular dependencies
+    from .MissionDocument import MissionDocument
 
 __all__ = [
     "MissionUndoCommand",
@@ -24,9 +25,9 @@ __all__ = [
 ]
 
 class MissionUndoCommand(QUndoCommand):
-    _doc: 'MissionDocument'
+    _doc: MissionDocument
 
-    def __init__(self, doc: 'MissionDocument') -> None:
+    def __init__(self, doc: MissionDocument) -> None:
         super().__init__()
 
         self._doc = doc
@@ -34,7 +35,7 @@ class MissionUndoCommand(QUndoCommand):
 class AddTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: 'MissionDocument', task: Task) -> None:
+    def __init__(self, doc: MissionDocument, task: Task) -> None:
         super().__init__(doc)
 
         self._task = task
@@ -51,7 +52,7 @@ class AddTaskUndoCommand(MissionUndoCommand):
 class DeleteTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: 'MissionDocument', task: Task) -> None:
+    def __init__(self, doc: MissionDocument, task: Task) -> None:
         super().__init__(doc)
 
         self._task = task
@@ -69,7 +70,7 @@ class AddWaypointUndoCommand(MissionUndoCommand):
     _task: Task
     _waypoint: Waypoint
 
-    def __init__(self, doc: 'MissionDocument', task: Task, fieldName: str,
+    def __init__(self, doc: MissionDocument, task: Task, fieldName: str,
                  waypoint: Waypoint) -> None:
         super().__init__(doc)
 
@@ -91,7 +92,7 @@ class DeleteWaypointUndoCommand(MissionUndoCommand):
     _task: Task
     _waypoint: Waypoint
 
-    def __init__(self, doc: 'MissionDocument', task: Task, fieldName: str,
+    def __init__(self, doc: MissionDocument, task: Task, fieldName: str,
                  waypoint: Waypoint) -> None:
         super().__init__(doc)
 
@@ -114,7 +115,7 @@ class SetWaypointPositionUndoCommand(MissionUndoCommand):
     _newPos: tuple[float, float]
     _oldPos: tuple[float, float]
 
-    def __init__(self, doc: 'MissionDocument', waypoint: Waypoint, latitude: float,
+    def __init__(self, doc: MissionDocument, waypoint: Waypoint, latitude: float,
                  longitude: float):
         super().__init__(doc)
 
@@ -135,7 +136,7 @@ class SetWaypointFieldUndoCommand(MissionUndoCommand):
     _value: Any
     _oldValue: Any
 
-    def __init__(self, doc: 'MissionDocument', waypoint: Waypoint, fieldId: int,
+    def __init__(self, doc: MissionDocument, waypoint: Waypoint, fieldId: int,
                  value: Any, oldValue: Any):
         super().__init__(doc)
 
@@ -158,7 +159,7 @@ class SetTaskFieldUndoCommand(MissionUndoCommand):
     _value: Any
     _oldValue: Any
 
-    def __init__(self, doc: 'MissionDocument', task: Task, fieldId: int, value: Any,
+    def __init__(self, doc: MissionDocument, task: Task, fieldId: int, value: Any,
                  oldValue: Any):
         super().__init__(doc)
 
@@ -180,7 +181,7 @@ class SetTaskDescriptionUndoCommand(MissionUndoCommand):
     _value: str
     _oldValue: str
 
-    def __init__(self, doc: 'MissionDocument', task: Task, value: str, oldValue: str):
+    def __init__(self, doc: MissionDocument, task: Task, value: str, oldValue: str):
         super().__init__(doc)
 
         self._task = task
@@ -199,7 +200,7 @@ class SetMissionFieldUndoCommand(MissionUndoCommand):
     _value: Any
     _oldValue: Any
 
-    def __init__(self, doc: 'MissionDocument', fieldId: int, value: Any, oldValue: Any):
+    def __init__(self, doc: MissionDocument, fieldId: int, value: Any, oldValue: Any):
         super().__init__(doc)
 
         self._fieldId = fieldId

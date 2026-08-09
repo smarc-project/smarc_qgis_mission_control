@@ -1,18 +1,10 @@
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
-
-from typing import *
 from uuid import UUID
 
-from ..mission.MissionDocument import MissionDocument
-from ..domain.waypoints import Waypoint
+from qgis.PyQt.QtCore import QModelIndex, Qt, QVariant, pyqtSlot
+
 from ..domain.tasks import Task
-from ..domain.schema import Schema
 from ..domain.taskspatial import isWaypointField, isWaypointListField
+from ..mission.MissionDocument import MissionDocument
 from .SchemaBasedModel import SchemaBasedModel
 
 __all__ = ["WaypointListModel"]

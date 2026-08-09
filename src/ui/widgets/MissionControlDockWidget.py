@@ -1,21 +1,19 @@
 from pathlib import Path
 
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
+from qgis.core import QgsApplication
+from qgis.gui import QgsDockWidget
 from qgis.utils import iface
 
-from ...domain.missionplan import MissionPlan
+from qgis.PyQt.QtCore import QCoreApplication, pyqtSlot
+from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
+
+from ...context.FleetContext import FleetContext
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
-from ...context.FleetContext import FleetContext
 from ..generated.MissionControlDockWidgetUi import Ui_MissionControlDockWidget
-from .MissionPlanWidget import MissionPlanWidget
 from .FleetControlWidget import FleetControlWidget
 from .LiveViewWidget import LiveViewWidget
+from .MissionPlanWidget import MissionPlanWidget
 
 
 class MissionControlDockWidget(QgsDockWidget):
@@ -128,7 +126,7 @@ class MissionControlDockWidget(QgsDockWidget):
         self.retranslateUi2()
 
     def retranslateUi2(self):
-        _translate = QtCore.QCoreApplication.translate
+        _translate = QCoreApplication.translate
         self.ui.tabWidget.setTabText(
             self.ui.tabWidget.indexOf(self.ui.tabMissionPlan),
             _translate("MissionControlDockWidget", "Mission Pla&n"),

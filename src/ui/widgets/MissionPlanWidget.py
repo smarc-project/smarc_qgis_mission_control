@@ -1,19 +1,25 @@
 from uuid import UUID
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal, pyqtSlot, QItemSelection
-from qgis.PyQt.QtWidgets import (QWidget, QHeaderView, QAbstractItemDelegate, QDialog,
-                                 QDataWidgetMapper, QMessageBox)
 from qgis.core import QgsApplication
 
+from qgis.PyQt.QtCore import QItemSelection, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtWidgets import (
+    QAbstractItemDelegate,
+    QDataWidgetMapper,
+    QDialog,
+    QHeaderView,
+    QMessageBox,
+    QWidget,
+)
+
+from ...domain.tasks import TaskRegistry, UnsupportedTaskCreationError
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
-from ...domain.missionplan import MissionPlan
-from ...domain.tasks import TaskRegistry, UnsupportedTaskCreationError
-from ...model.TaskListModel import TaskListModel
 from ...model.MissionParamsModel import MissionParamsModel
+from ...model.TaskListModel import TaskListModel
 from ..generated.MissionPlanWidgetUi import Ui_MissionPlanWidget
-from .TaskEditorWidget import TaskEditorWidget
 from .AddTaskDialog import AddTaskDialog
+from .TaskEditorWidget import TaskEditorWidget
 
 
 class MissionPlanWidget(QWidget):

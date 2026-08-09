@@ -1,14 +1,28 @@
 from dataclasses import dataclass
 
-from qgis.PyQt.QtCore import QObject, pyqtSlot, pyqtSignal, QVariant
-from qgis.PyQt.QtGui import QColor
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsField, \
-    QgsPointXY, QgsCategorizedSymbolRenderer, QgsSymbol, QgsUnitTypes, QgsProperty, \
-    QgsRendererCategory, QgsMarkerSymbol, QgsSymbolLayer, QgsSvgMarkerSymbolLayer
+from qgis.core import (
+    QgsCategorizedSymbolRenderer,
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
+    QgsMarkerSymbol,
+    QgsPointXY,
+    QgsProject,
+    QgsProperty,
+    QgsRendererCategory,
+    QgsSvgMarkerSymbolLayer,
+    QgsSymbol,
+    QgsSymbolLayer,
+    QgsUnitTypes,
+    QgsVectorLayer,
+)
 from qgis.gui import QgsRubberBand
 from qgis.utils import iface
 
-from .FleetState import *
+from qgis.PyQt.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QColor
+
+from .FleetState import FleetState
 
 
 @dataclass

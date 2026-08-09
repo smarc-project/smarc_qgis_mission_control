@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from uuid import UUID
-from .schema import SchemaMixin, Column
-
 from typing import Annotated
+from uuid import UUID
+
+from .schema import Column, SchemaMixin
+
 
 @dataclass
 class WaraPsAvailableTask:

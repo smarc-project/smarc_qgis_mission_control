@@ -1,15 +1,18 @@
 from dataclasses import dataclass, field
 
-from qgis.PyQt.QtCore import QObject, pyqtSlot, pyqtSignal, QVariant
-from qgis.PyQt.QtGui import QColor
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsField, \
-    QgsPointXY, QgsCategorizedSymbolRenderer, QgsApplication, QgsSymbol, \
-    QgsRendererCategory, QgsApplication
-from qgis.gui import QgsRubberBand
-from qgis.utils import iface
+from qgis.core import QgsApplication
 
-from .MqttService import MqttService, VehicleHeartbeatEvent, VehicleSensorEvent, VehicleTaskStateEvent
+from qgis.PyQt.QtCore import QObject, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QColor
+
 from ..domain.waraps import WaraPsExecutingTask
+from .MqttService import (
+    MqttService,
+    VehicleHeartbeatEvent,
+    VehicleSensorEvent,
+    VehicleTaskStateEvent,
+)
+
 
 @dataclass
 class VehicleState:

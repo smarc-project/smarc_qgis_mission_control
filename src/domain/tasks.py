@@ -1,12 +1,11 @@
-from typing import TYPE_CHECKING, Annotated, ClassVar, TypeVar, Type, Callable, cast
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Annotated, Callable, ClassVar, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from ..compat import StrEnum
 from .jsoncodec import JsonCodec
-from .schema import SchemaMixin, FieldSpec, Unit, Column, JsonKey
-from .waypoints import *
-
+from .schema import Column, SchemaMixin, Unit
+from .waypoints import AUVWaypoint, GeoPoint, Waypoint
 
 __all__ = [
     "Task",

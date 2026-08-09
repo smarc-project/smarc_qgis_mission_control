@@ -38,6 +38,42 @@ Supported Ubuntu version(s): 22.04 (Python 3.10)
 
 ## Developer instructions
 
+### Development setup
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
+2. Install the development dependencies from the repository root:
+
+```bash
+uv sync
+```
+
+On Linux, if QGIS/PyQGIS is installed system-wide and you want it available inside the environment for tools such as mypy, create the environment with:
+
+```bash
+uv venv --system-site-packages
+uv sync
+```
+
+3. Check imports before pushing changes:
+
+```bash
+uv run ruff check src/
+```
+
+Most import issues can be fixed automatically with:
+
+```bash
+uv run ruff check --fix src/
+```
+
+Import checks are also run automatically on pull requests targeting `master`. Pull requests should pass these checks before they can be merged.
+
+The import checks currently cover:
+
+- No wildcard (`*`) imports
+- No unused imports
+- No undefined names
+- Consistent import ordering
+
 ### UI design
 0. Install PyQt5 via `pip install PyQt5` (or any other way)
 1. Develop UI layout in QtDesigner to generate *.ui files

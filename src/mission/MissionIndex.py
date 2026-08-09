@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from ..domain.missionplan import MissionPlan
-from ..domain.waypoints import Waypoint
 from ..domain.tasks import Task
 from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.waypoints import Waypoint
 
 
 @dataclass

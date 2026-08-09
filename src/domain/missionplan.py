@@ -1,9 +1,9 @@
-from typing import Any, Annotated
 from dataclasses import dataclass, field
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
+from .schema import Column, SchemaMixin, Unit
 from .tasks import Task, TaskRegistry
-from .schema import SchemaMixin, Column, Unit
 
 __all__ = ["MissionPlan"]
 

@@ -1,11 +1,17 @@
-from typing import Type
 from enum import Enum
+from typing import Type
 
-from qgis.PyQt.QtCore import Qt, pyqtSlot, pyqtSignal
-from qgis.PyQt.QtGui import QIntValidator, QDoubleValidator
-from qgis.PyQt.QtWidgets import QWidget, QFormLayout, QLabel, QComboBox, QLineEdit, QDataWidgetMapper, QCheckBox
-
-from ...domain.schema import Schema
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QDoubleValidator, QIntValidator
+from qgis.PyQt.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDataWidgetMapper,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QWidget,
+)
 
 __all__ = ["AutomaticFormWidget"]
 

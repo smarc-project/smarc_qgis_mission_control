@@ -1,14 +1,15 @@
-from pathlib import Path
 import json
-import platform
 import os
+import platform
 import subprocess
+from pathlib import Path
 
-from qgis.PyQt.QtCore import QObject, Qt, QSize, pyqtSlot
-from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QDialog, QSizePolicy, QWidget, QMessageBox
+from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
-from qgis.core import QgsProject, QgsApplication
+
+from qgis.PyQt.QtCore import QObject, QSize, Qt, pyqtSlot
+from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtWidgets import QAction, QMessageBox, QSizePolicy, QWidget
 
 from .context.FleetContext import FleetContext
 from .mission.MissionContext import MissionContext

@@ -1,14 +1,10 @@
 from math import degrees
-from functools import partial
 
-from qgis.PyQt import uic
-from qgis.PyQt.QtCore import *
-from qgis.PyQt.QtGui import *
-from qgis.PyQt.QtWidgets import *
-from qgis.gui import *
-from qgis.core import *
-from qgis.utils import iface
-from qgis.PyQt.QtGui import QMovie
+from qgis.core import QgsApplication
+
+from qgis.PyQt.QtCore import QSignalBlocker, QSize, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QColor, QMovie
+from qgis.PyQt.QtWidgets import QWidget
 
 from ...context.FleetState import VehicleState
 from ..generated.VehicleLiveViewWidgetUi import Ui_VehicleLiveViewWidget

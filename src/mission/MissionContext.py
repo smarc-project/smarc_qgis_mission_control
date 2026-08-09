@@ -1,17 +1,17 @@
-from pathlib import Path
-from uuid import UUID, uuid4
 import json
+from pathlib import Path
+from uuid import UUID
 
-from qgis.PyQt.QtCore import pyqtSlot, pyqtSignal, QObject
-from qgis.core import QgsProject, QgsPointXY
+from qgis.core import QgsPointXY
 from qgis.utils import iface
 
-from .MissionMapManager import MissionMapManager
-from .MissionDocument import MissionDocument
+from qgis.PyQt.QtCore import QObject, pyqtSignal, pyqtSlot
+
 from ..domain.missionplan import MissionPlan
 from ..domain.tasks import PendingWaypointTask
 from ..domain.taskspatial import iterTaskWaypoints
-
+from .MissionDocument import MissionDocument
+from .MissionMapManager import MissionMapManager
 
 __all__ = ["MissionContext"]
 

@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Any, get_origin, get_args
+from typing import Any, get_args, get_origin
 
-from .schema import FieldSpec, SchemaMixin
+from .schema import SchemaMixin
 
 
 class JsonCodec:

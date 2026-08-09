@@ -1,19 +1,46 @@
-from ..domain.missionplan import MissionPlan
-from ..domain.waypoints import Waypoint
-from ..domain.taskspatial import iterTaskWaypoints
+from __future__ import annotations
 
-from qgis.core import *
-from qgis.PyQt.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QVariant, QSizeF
-from qgis.PyQt.QtGui import QColor
-
+from typing import TYPE_CHECKING
 from uuid import UUID
 
+from qgis.core import (
+    Qgis,
+    QgsFeature,
+    QgsFeatureRenderer,
+    QgsField,
+    QgsGeometry,
+    QgsLayerTreeGroup,
+    QgsLineString,
+    QgsMarkerLineSymbolLayer,
+    QgsPointXY,
+    QgsProject,
+    QgsProperty,
+    QgsSimpleLineSymbolLayer,
+    QgsSimpleMarkerSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsSymbol,
+    QgsTextBackgroundSettings,
+    QgsTextFormat,
+    QgsVectorLayer,
+    QgsVectorLayerSimpleLabeling,
+)
+
+from qgis.PyQt.QtCore import QObject, QSizeF, Qt, QVariant, pyqtSlot
+from qgis.PyQt.QtGui import QColor
+
+from ..domain.missionplan import MissionPlan
+from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.waypoints import Waypoint
+
+if TYPE_CHECKING:
+    # Prevent circular dependencies
+    from .MissionDocument import MissionDocument
 
 __all__ = ["MissionTracks"]
 
 
 class MissionTracks(QObject):
-    _doc: 'MissionDocument'
+    _doc: MissionDocument
     _layer: QgsVectorLayer
     _activeRenderer: QgsFeatureRenderer
     _inactiveRenderer: QgsFeatureRenderer
@@ -28,7 +55,7 @@ class MissionTracks(QObject):
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
 
-    def __init__(self, doc: 'MissionDocument', layerGroup: QgsLayerTreeGroup,
+    def __init__(self, doc: MissionDocument, layerGroup: QgsLayerTreeGroup,
                  parent: QObject | None = None):
         super().__init__(parent)
 
