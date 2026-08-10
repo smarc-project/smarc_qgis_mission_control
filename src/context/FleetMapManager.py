@@ -10,6 +10,7 @@ from qgis.core import (
     QgsProject,
     QgsProperty,
     QgsRendererCategory,
+    QgsSimpleMarkerSymbolLayer,
     QgsSvgMarkerSymbolLayer,
     QgsSymbol,
     QgsSymbolLayer,
@@ -95,6 +96,7 @@ class FleetMapManager(QObject):
             QgsField('speed', QVariant.Double),
             QgsField('roll', QVariant.Double),
             QgsField('pitch', QVariant.Double),
+            QgsField('is-current', QVariant.Bool),
         ])
         self._waypointLayer.updateFields()
 
@@ -118,23 +120,24 @@ class FleetMapManager(QObject):
         # Pick icon by vehicle type encoded in the topic
         if '/subsurface/' in vehicleTopic:
             svg = ':/custom_icons/auv_marker.svg'
-            size = 4
+            size = 6
         elif '/surface/' in vehicleTopic:
             svg = ':/custom_icons/usv_marker.svg'
-            size = 4
+            size = 8
         elif '/air/' in vehicleTopic:
             svg = ':/custom_icons/uav_marker.svg' # can be improved!
             size = 10
         elif '/command/' in vehicleTopic:
             svg = ':/custom_icons/vehicle_marker.svg'
-            size = 4
+            size = 6
         else:
             svg = ':/custom_icons/vehicle_marker.svg'
-            size = 4
+            size = 6
 
         symbol = QgsMarkerSymbol()
         symbol.deleteSymbolLayer(0)  # remove default circle
 
+        # --- Full custom SVG icon: only drawn for the vehicle's latest position ---
         svg_layer = QgsSvgMarkerSymbolLayer(svg)
         svg_layer.setSize(size)
         svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits) # alt. QgsUnitTypes.RenderMillimeters
@@ -142,15 +145,34 @@ class FleetMapManager(QObject):
         svg_layer.setStrokeColor(color.darker(150))
         svg_layer.setStrokeWidth(0.2)
 
-        # Rotate marker by the heading field value
+        svg_layer.setDataDefinedProperty(
+            QgsSymbolLayer.PropertyLayerEnabled, QgsProperty.fromExpression('"is-current"')
+        )
+
         svg_layer.setDataDefinedProperty(
             QgsSymbolLayer.PropertyAngle,
             QgsProperty.fromField('heading')
         )
 
+        # --- Simple arrow: drawn for every older trail point ---
+        trail_layer = QgsSimpleMarkerSymbolLayer(QgsSimpleMarkerSymbolLayer.Shape.Arrow)
+        # or: trail_layer = QgsSimpleMarkerSymbolLayer(QgsSimpleMarkerSymbolLayer.Shape.Circle)
+        trail_layer.setSize(6)
+        trail_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+        trail_layer.setColor(color)
+        trail_layer.setStrokeColor(color.darker(150))
+        trail_layer.setDataDefinedProperty(
+            QgsSymbolLayer.PropertyAngle, QgsProperty.fromField('heading') # omit this property for circle shape
+        )
+        trail_layer.setDataDefinedProperty(
+            QgsSymbolLayer.PropertyLayerEnabled, QgsProperty.fromExpression('NOT "is-current"')
+        )
+
         # Keep marker size fixed regardless of map zoom
         symbol.setScaleMethod(QgsSymbol.ScaleArea)
+
         symbol.appendSymbolLayer(svg_layer)
+        symbol.appendSymbolLayer(trail_layer)
 
         return symbol
 
@@ -223,6 +245,13 @@ class FleetMapManager(QObject):
         feat['speed'] = state.speed
         feat['roll'] = state.roll
         feat['pitch'] = state.pitch
+        feat['is-current'] = True
+
+        if vehicle.lastFid is not None:
+            fieldIdx = self._waypointLayer.fields().indexFromName('is-current')
+            self._waypointLayer.dataProvider().changeAttributeValues({
+                vehicle.lastFid: {fieldIdx: False}
+        })
 
         self._waypointLayer.dataProvider().addFeature(feat)
         vehicle.trackRubberBand.addPoint(point)
