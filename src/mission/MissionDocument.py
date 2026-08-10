@@ -221,14 +221,6 @@ class MissionDocument(QObject):
 
     # TODO: move task to a specific index
     # def moveTask(self, taskUuid: UUID, index: int): ...
-    def setTaskField(self, taskUuid: UUID, fieldId: int, value: Any):
-        # TODO: undo/redo
-        task = self.index.taskByUuid(taskUuid)
-        if task is None:
-            # TODO: invalid mapping
-            return
-
-        task.schema().fields[fieldId].setValue(task, value)
 
     # TODO: accept index?
     # TODO: other waypoint parameters

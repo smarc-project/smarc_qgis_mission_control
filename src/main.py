@@ -4,10 +4,10 @@ import platform
 import subprocess
 from pathlib import Path
 
-from qgis.core import QgsApplication
+from qgis.core import QgsApplication  #, QgsSettings
 from qgis.gui import QgisInterface
 
-from qgis.PyQt.QtCore import QObject, QSize, Qt, pyqtSlot
+from qgis.PyQt.QtCore import QObject, QSize, Qt, QTimer, pyqtSlot
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QSizePolicy, QWidget
 
@@ -29,19 +29,6 @@ class SMaRCMissionControlPlugin(QObject):
         self.missionControlDock = None
         self.missionControlAction = None
 
-        self.user_settings = {
-                "mqtt": {
-                    "host": "localhost",
-                    "port": 1883,
-                    "username": "",
-                    "password": "",
-                    "context": "#",
-                },
-                "wara-ps": {
-                    "sender": "QGIS-MissionControl",
-                }
-        }
-
         # set path and path to svg files
         self.plugin_dir = Path(__file__).parent
         self.smarc_icon_slim = QIcon(
@@ -51,8 +38,20 @@ class SMaRCMissionControlPlugin(QObject):
             str(self.plugin_dir / "ui" / "svg" / "smarclogo1.png")
         )
 
+        ## settings file related
         settings_dir = QgsApplication.qgisSettingsDirPath()
         self.settings_file_path = str(f"{settings_dir}/smarc_qgis_mission_control/settings.json")
+        self._loadSettings()
+
+        ## mapTips delay settings
+        # permanent, global settings overwrite! active after restart of QGIS. native default: 850
+        # QgsSettings().setValue("qgis/mapTipsDelay", 850) # requires from qgis.core import QgsSettings
+
+        # find mapTips timer to reduce mapTips delay
+        for timer in iface.mapCanvas().findChildren(QTimer):
+            if timer.interval() == 850:
+                self.mapTip_timer = timer
+                self.mapTip_timer.setInterval(0)
 
         self.fleetContext = FleetContext(self)
         self.missionContext = MissionContext(self)
@@ -102,13 +101,23 @@ class SMaRCMissionControlPlugin(QObject):
         self.mqttButton = self.toolbar.widgetForAction(self.mqttAction)
         self.set_mqtt_button_style(False) # set color feedback of MQTT button to "disconnected"
 
+        # Settings button
         self.settingsAction = QAction("Settings", self.iface.mainWindow())
         self.settingsAction.setToolTip("Open plugin settings")
         self.settingsAction.triggered.connect(self.onSettingsActionClicked)
         self.toolbar.addAction(self.settingsAction)
         self.settingsButton = self.toolbar.widgetForAction(self.settingsAction)
 
-
+        # Apply settings button
+        self.applySettingsAction = QAction("Apply settings", self.iface.mainWindow())
+        self.applySettingsAction.setToolTip("Apply plugin settings")
+        self.applySettingsAction.triggered.connect(self.onApplySettingsActionClicked)
+        self.toolbar.addAction(self.applySettingsAction)
+        self.applySettingsButton = self.toolbar.widgetForAction(self.applySettingsAction)
+        
+        map_tips_action = self.iface.actionMapTips()
+        if not map_tips_action.isChecked():
+            map_tips_action.trigger()
         
 
     def unload(self):
@@ -178,9 +187,6 @@ class SMaRCMissionControlPlugin(QObject):
     def onMqttActionClicked(self, checked: bool):
         self.dialog = MqttConnectionDialog(self.iface.mainWindow())
 
-        # fill in the fields from the settings file if possible
-        self.loadSettings()
-
         self.dialog.setIp(self.user_settings.get("mqtt", {}).get("host", ""))
         self.dialog.setPort(self.user_settings.get("mqtt", {}).get("port", 1883))
         self.dialog.setUsername(self.user_settings.get("mqtt", {}).get("username", ""))
@@ -191,14 +197,69 @@ class SMaRCMissionControlPlugin(QObject):
         self.dialog.disconnectRequested.connect(self._onMqttDisconnect)
         self.dialog.exec()
 
-    def loadSettings(self):
+    def _defineSettings(self): # assumes a flat dict of scalars
+         self.user_settings = {
+                        "mqtt": {
+                            "host": "localhost",
+                            "port": 1883,
+                            "username": "",
+                            "password": "",
+                            "context": "+",
+                        },
+                        "wara-ps": {
+                            "sender": "QGIS-MissionControl",
+                            "default-mission-timeout": 1800,
+                            "default-task-timeout": 300,
+                            "default-tolerance": 10.0,
+                            "default-auv-depth": -1.0,
+                            "default-auv-altitude": 3.0,
+                        },
+                        "qgis": {
+                            "default-zoom-level": 25000
+                        },
+                }
+    def _mergeSettings(self, defaults, loaded):
+        merged = dict(loaded)
+        changed = False
+
+        for section, default_values in defaults.items():
+            if section not in merged:
+                merged[section] = dict(default_values)
+                changed = True
+            else:
+                for key, value in default_values.items():
+                    if key not in merged[section]:
+                        merged[section][key] = value
+                        changed = True
+
+        return merged, changed
+
+    def _loadSettings(self):
+        self._defineSettings()
+        defaults = self.user_settings
+
         if not os.path.exists(self.settings_file_path):
             os.makedirs(os.path.dirname(self.settings_file_path), exist_ok=True)
             with open(self.settings_file_path, "w") as f:
-                json.dump(self.user_settings, f, indent=4)
-        with open(self.settings_file_path, "r") as f:
-            self.user_settings = json.load(f)
+                json.dump(defaults, f, indent=4)
+            self.user_settings = defaults # explicit for clarity; safe if defaults is ever copied instead of aliased
+            return
 
+        with open(self.settings_file_path, "r") as f:
+            loaded_settings = json.load(f)
+
+        merged_settings, changed = self._mergeSettings(defaults, loaded_settings)
+
+        if changed: 
+            with open(self.settings_file_path, "w") as f:
+                json.dump(merged_settings, f, indent=4)
+
+        self.user_settings = merged_settings
+
+    def _propagateSettings(self):
+        self._loadSettings()
+
+        # not possible if no mqtt connection established yet
         self.fleetContext.mqtt.setSenderId(
             self.user_settings.get("wara-ps", {}).get("sender", "QGIS-MissionControl")
         )
@@ -220,6 +281,10 @@ class SMaRCMissionControlPlugin(QObject):
                 str(e),
             )
 
+    @pyqtSlot(bool)
+    def onApplySettingsActionClicked(self, checked: bool):
+        self._propagateSettings()
+
     def _onMqttConnect(self, ip, port, username, password, context):
         if context == "#":
             context = "+"
@@ -234,6 +299,8 @@ class SMaRCMissionControlPlugin(QObject):
                 context,
             )
             self.set_mqtt_button_style(self.fleetContext.mqtt._client.is_connected())
+            self._propagateSettings()
+
         except Exception as e:
             self.set_mqtt_button_style(False)
             QMessageBox.warning(
