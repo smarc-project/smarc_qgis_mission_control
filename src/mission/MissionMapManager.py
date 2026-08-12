@@ -187,7 +187,13 @@ class MissionMapManager(QObject):
             if taskUuid is None or fieldName is None:
                 # TODO: invalid mapping
                 return
-            doc.addWaypoint(taskUuid, point.y(), point.x(), fieldName = fieldName)
+
+            task = doc.index.taskByUuid(taskUuid)
+            if task is None:
+                # TODO: invalid mapping
+                return
+
+            doc.addWaypoint(taskUuid, task.description, point.y(), point.x(), fieldName = fieldName)
 
     @pyqtSlot(QgsPointXY, Qt.MouseButton)
     def onSelectLocationToolMapClicked(self, point: QgsPointXY,
