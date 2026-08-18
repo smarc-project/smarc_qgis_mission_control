@@ -306,12 +306,16 @@ class MoveToDampedTask(Task):
     speed: Annotated[MovementSpeedParam, Column("Speed")] \
         = MovementSpeedParam.STANDARD
     waypoint: Annotated[GeoPoint, Column("Waypoint")]
+    open_loop: Annotated[bool, Column("OpenLoop")] \
+        = False
 
-@task("excite-and-estimate-rope")
+@task("estimate-length-and-damping")
 class ExciteAndEstimateRopeTask(Task):
-    duration: Annotated[float, Unit("s"), Column("Duration")] \
+    excitation_duration: Annotated[float, Unit("s"), Column("ExcitationDuration")] \
+        = 20.0
+    collection_duration: Annotated[float, Unit("s"), Column("CollectionDuration")] \
         = 3.0
-    speed: Annotated[float, Unit("m/s"), Column("Speed")] \
+    excitation_speed: Annotated[float, Unit("m/s"), Column("ExcitationSpeed")] \
         = 1.0
     min_periods: Annotated[int, Column("MinPeriods")] \
         = 4
