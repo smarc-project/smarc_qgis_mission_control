@@ -300,6 +300,33 @@ class AlarsPingSearch(Task):
         = field(default_factory = list)
 
 
+@task("alars-move-to-damped")
+class AlarsMoveToDampedTask(Task):
+    #: Speed as specified in WARA-PS
+    waypoint: Annotated[GeoPoint, Column("Waypoint")]
+    speed: Annotated[MovementSpeedParam, Column("Speed")] \
+        = MovementSpeedParam.STANDARD
+    open_loop: Annotated[bool, Column("OpenLoop")] \
+        = False
+
+@task("alars-estimate-rope-swing")
+class AlarsEstimateRopeSwingTask(Task):
+    excitation_duration: Annotated[float, Unit("s"), Column("ExcitationDuration")] \
+        = 20.0
+    excitation_speed: Annotated[float, Unit("m/s"), Column("ExcitationSpeed")] \
+        = 1.0
+    collection_duration: Annotated[float, Unit("s"), Column("CollectionDuration")] \
+        = 3.0
+    min_periods: Annotated[int, Column("MinPeriods")] \
+        = 4
+    refractory_window: Annotated[float, Unit("s"), Column("RefractoryWindow")] \
+        = 1.5
+    smoothing_window: Annotated[int, Unit("#smpls"), Column("SmoothingWindow")] \
+        = 5
+    axis_selection_duration: Annotated[float, Unit("s"), Column("AxisSelectionDuration")] \
+        = 2.0
+
+#### END ALARS Tasks ####
 
 @task("deploy")
 class DeployPayloadTask(Task):
