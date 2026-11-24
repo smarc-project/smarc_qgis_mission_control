@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from qgis.core import QgsApplication  #, QgsSettings
-from qgis.gui import QgisInterface
+from qgis.gui import QgisInterface, QgsApplicationExitBlockerInterface
 
 from qgis.PyQt.QtCore import QObject, QSize, Qt, QTimer, pyqtSlot
 from qgis.PyQt.QtGui import QIcon
@@ -13,8 +13,21 @@ from qgis.PyQt.QtWidgets import QAction, QMessageBox, QSizePolicy, QWidget
 
 from .context.FleetContext import FleetContext
 from .mission.MissionContext import MissionContext
+from .ui.NativeChrome import NativeChrome
 from .ui.widgets.MissionControlDockWidget import MissionControlDockWidget
 from .ui.widgets.MqttConnectionDialog import MqttConnectionDialog
+
+
+class _ShowQgisBeforeExit(QgsApplicationExitBlockerInterface):
+    """QGIS asks this before it saves the window layout and quits."""
+
+    def __init__(self, action: QAction) -> None:
+        super().__init__()
+        self._action = action
+
+    def allowExit(self) -> bool:
+        self._action.setChecked(False)
+        return True
 
 
 class SMaRCMissionControlPlugin(QObject):
@@ -28,6 +41,10 @@ class SMaRCMissionControlPlugin(QObject):
         self.mqttButton = None
         self.missionControlDock = None
         self.missionControlAction = None
+        self.mapToolbar = None
+        self.nativeChrome = None
+        self.nativeChromeAction = None
+        self.showQgisBeforeExit = None
 
         # set path and path to svg files
         self.plugin_dir = Path(__file__).parent
@@ -115,6 +132,29 @@ class SMaRCMissionControlPlugin(QObject):
         self.toolbar.addAction(self.applySettingsAction)
         self.applySettingsButton = self.toolbar.widgetForAction(self.applySettingsAction)
         
+        # With QGIS's own toolbars hidden, these are the map tools left. They are QGIS's
+        # own actions, so they keep their icons, shortcuts, and checked map tool.
+        self.mapToolbar = self.iface.addToolBar("SMaRC Map")
+        self.mapToolbar.setObjectName("SMaRC Map")
+        for action in (self.iface.actionPan(), self.iface.actionZoomIn(),
+                       self.iface.actionZoomOut(), self.iface.actionZoomFullExtent(),
+                       self.iface.actionMeasure(), self.iface.actionSaveProject()):
+            self.mapToolbar.addAction(action)
+        self.mapToolbar.hide()
+
+        self.nativeChrome = NativeChrome(
+            self.iface.mainWindow(),
+            keep=[self.toolbar, self.mapToolbar, self.missionControlDock],
+        )
+        self.nativeChromeAction = QAction("Hide QGIS", self.iface.mainWindow())
+        self.nativeChromeAction.setCheckable(True)
+        self.nativeChromeAction.setToolTip(
+            "Hide QGIS's own toolbars and panels while this is pressed. Only this session.")
+        self.nativeChromeAction.toggled.connect(self.onNativeChromeToggled)
+        self.toolbar.insertAction(self.mqttAction, self.nativeChromeAction)
+        self.showQgisBeforeExit = _ShowQgisBeforeExit(self.nativeChromeAction)
+        self.iface.registerApplicationExitBlocker(self.showQgisBeforeExit)
+
         map_tips_action = self.iface.actionMapTips()
         if not map_tips_action.isChecked():
             map_tips_action.trigger()
@@ -123,6 +163,20 @@ class SMaRCMissionControlPlugin(QObject):
     def unload(self):
         """Called when the plugin is deactivated."""
         self.fleetContext.mqtt.disconnect()
+
+        if self.showQgisBeforeExit is not None:
+            self.iface.unregisterApplicationExitBlocker(self.showQgisBeforeExit)
+            self.showQgisBeforeExit = None
+        if self.nativeChrome is not None:
+            self.nativeChrome.restore()
+            self.nativeChrome.deleteLater()
+            self.nativeChrome = None
+        if self.mapToolbar is not None:
+            self.mapToolbar.deleteLater()
+            self.mapToolbar = None
+        if self.nativeChromeAction is not None:
+            self.nativeChromeAction.deleteLater()
+            self.nativeChromeAction = None
 
         # Clean up scratch layers created at runtime
         self.missionContext.cleanup()
@@ -167,6 +221,10 @@ class SMaRCMissionControlPlugin(QObject):
         self.missionControlAction = None
         self.mqttButton = None
         self.iface.smarcmcp = None
+
+    def onNativeChromeToggled(self, hide: bool) -> None:
+        self.nativeChrome.setHidden(hide)
+        self.mapToolbar.setVisible(hide)
 
     def set_mqtt_button_style(self, connected: bool):
         if not self.mqttButton:
