@@ -353,8 +353,7 @@ class MissionLayerBridge(QObject):
             case _ as unreachable:
                 assert_never(unreachable)
 
-    @pyqtSlot('QgsFeatureId', QgsGeometry)
-    def onGeometryChanged(self, fid: int, geom: QgsGeometry) -> None:
+    def onGeometryChanged(self, fid, geom) -> None:
         print('onGeometryChanged', fid, geom)
 
         match self._state:
