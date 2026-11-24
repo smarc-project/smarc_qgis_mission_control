@@ -353,7 +353,8 @@ class MissionLayerBridge(QObject):
             case _ as unreachable:
                 assert_never(unreachable)
 
-    def onGeometryChanged(self, fid, geom) -> None:
+    # No @pyqtSlot('QgsFeatureId', QgsGeometry): QGIS 3.44 refuses the connection with it.
+    def onGeometryChanged(self, fid: int, geom: QgsGeometry) -> None:
         print('onGeometryChanged', fid, geom)
 
         match self._state:

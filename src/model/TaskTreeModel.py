@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from qgis.PyQt.QtCore import QAbstractItemModel, QModelIndex, Qt, pyqtSlot
+from qgis.PyQt.QtCore import QAbstractItemModel, QModelIndex, Qt, pyqtSignal, pyqtSlot
 
-from ..domain.missionplan import TaskGroup
+from ..domain.missionplan import TaskGroup, walk
+from ..domain.tasks import Task
 from ..mission.MissionDocument import MissionDocument
 
 __all__ = ["TaskTreeModel"]
@@ -13,6 +14,9 @@ class TaskTreeModel(QAbstractItemModel):
 
     _columns = ["Description", "Type"]
 
+    # After the reset that follows an add, with the new node's index, so the view can select it.
+    nodeAdded = pyqtSignal(QModelIndex)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._doc: MissionDocument | None = None
@@ -22,14 +26,14 @@ class TaskTreeModel(QAbstractItemModel):
     def bind(self, doc: MissionDocument) -> None:
         self.unbind()
         self._doc = doc
-        self._doc.taskAdded.connect(self._reset)
+        self._doc.taskAdded.connect(self._on_task_added)
         self._doc.taskDeleted.connect(self._reset)
         self._doc.taskChanged.connect(self._on_task_changed)
         self._reset()
 
     def unbind(self) -> None:
         if self._doc is not None:
-            self._doc.taskAdded.disconnect(self._reset)
+            self._doc.taskAdded.disconnect(self._on_task_added)
             self._doc.taskDeleted.disconnect(self._reset)
             self._doc.taskChanged.disconnect(self._on_task_changed)
         self._doc = None
@@ -58,6 +62,24 @@ class TaskTreeModel(QAbstractItemModel):
         if isinstance(node, TaskGroup):
             return node.children
         return []
+
+    def indexOf(self, node, column: int = 0) -> QModelIndex:
+        plan = self.plan()
+        if plan is None or node is None:
+            return QModelIndex()
+        if node is plan:
+            return self.createIndex(0, column, self._remember(plan))
+        location = plan.locate(node)
+        if location is None:
+            return QModelIndex()
+        return self.createIndex(location[1], column, self._remember(node))
+
+    def _node_by_uuid(self, uuid: UUID):
+        plan = self.plan()
+        for _, _, node in walk(plan.tasks):
+            if node.uuid == uuid:
+                return node
+        return None
 
     def _reset(self, *_) -> None:
         self.beginResetModel()
@@ -93,25 +115,26 @@ class TaskTreeModel(QAbstractItemModel):
         plan = self.plan()
         if node is None or node is plan or plan is None:
             return QModelIndex()
-        owner, _row = _owner_and_row(plan, node)
-        if owner is None:
-            return self.createIndex(0, 0, self._remember(plan))
-        _grand, row = _owner_and_row(plan, owner)
-        return self.createIndex(row, 0, self._remember(owner))
+        location = plan.locate(node)
+        if location is None:
+            return QModelIndex()
+        return self.indexOf(location[0] or plan)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
-        if not index.isValid() or role not in (Qt.DisplayRole, Qt.EditRole):
+        if not index.isValid() or role not in (Qt.DisplayRole, Qt.EditRole, Qt.ToolTipRole):
             return None
         node = self.node(index)
         plan = self.plan()
         if index.column() == 0:
-            if node is plan:
-                return plan.description or plan.name
-            return node.description
+            return (plan.description or plan.name) if node is plan else node.description
         if index.column() == 1:
             if node is plan:
-                return plan.name if plan.name in ("seq", "conc") else "seq"
-            return node.type
+                kind = plan.root_kind
+            elif isinstance(node, TaskGroup):
+                kind = node.kind
+            else:
+                return node.type
+            return kind.value if role == Qt.EditRole else kind.label
         return None
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
@@ -121,29 +144,29 @@ class TaskTreeModel(QAbstractItemModel):
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlags:
         flags = super().flags(index)
-        if self._editable and index.column() == 0 and self.node(index) is not self.plan():
+        # Only a task has an undoable description setter.
+        if self._editable and index.column() == 0 and isinstance(self.node(index), Task):
             flags |= Qt.ItemIsEditable
         return flags
 
+    def setData(self, index: QModelIndex, value, role: int = Qt.EditRole) -> bool:
+        node = self.node(index)
+        if (role != Qt.EditRole or not self._editable or self._doc is None
+                or index.column() != 0 or not isinstance(node, Task)):
+            return False
+        self._doc.setTaskDescription(node.uuid, str(value))
+        return True
+
+    @pyqtSlot(UUID, int)
+    def _on_task_added(self, uuid: UUID, _row: int) -> None:
+        self._reset()
+        self.nodeAdded.emit(self.indexOf(self._node_by_uuid(uuid)))
+
     @pyqtSlot(UUID)
     def _on_task_changed(self, task_uuid: UUID) -> None:
-        self._reset()
+        # A field edit repaints its row. A reset would collapse the tree under the cursor.
+        node = self._node_by_uuid(task_uuid)
+        first = self.indexOf(node)
+        if first.isValid():
+            self.dataChanged.emit(first, self.indexOf(node, len(self._columns) - 1))
 
-
-def _owner_and_row(plan, node):
-    """Return (parent group or None if the node is directly under the plan, row)."""
-    if node in plan.tasks:
-        return None, plan.tasks.index(node)
-
-    def walk(children):
-        for child in children:
-            if not isinstance(child, TaskGroup):
-                continue
-            if node in child.children:
-                return child, child.children.index(node)
-            found = walk(child.children)
-            if found is not None:
-                return found
-        return None
-
-    return walk(plan.tasks)
