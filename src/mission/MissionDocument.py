@@ -8,6 +8,7 @@ from qgis.core import QgsPointXY
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
 from ..domain.missionplan import MissionPlan
+from ..domain.missionplan import TaskGroup, find_group, iter_leaves
 from ..domain.tasks import (
     PendingWaypointTask,
     Task,
@@ -124,15 +125,30 @@ class MissionDocument(QObject):
         self.missionChanged.emit()
 
     # TODO: accept index in addTask?
+    def addGroup(self, kind: str, description: str, parent: TaskGroup | None = None) -> TaskGroup:
+        group = TaskGroup(kind=kind, description=description)
+        container = self.plan.tasks if parent is None else parent.children
+        container.append(group)
+        self.taskAdded.emit(group.uuid, len(container) - 1)
+        return group
+
+    def deleteGroup(self, group: TaskGroup) -> None:
+        if not _remove_group(self.plan.tasks, group):
+            return
+        for leaf in iter_leaves(group.children):
+            self.index.forgetTask(leaf.uuid)
+        self.taskAdded.emit(group.uuid, 0)
+
     def addTask(self, taskType: str, description: str,
-                taskUuid: UUID | None = None) -> None:
+                taskUuid: UUID | None = None,
+                parent: TaskGroup | None = None) -> None:
         taskCls = TaskRegistry.lookup(taskType)
         requiredFields = taskCls.requiredFields()
 
         if not requiredFields:
             # Task can be added directly
             task = taskCls(description=description, uuid=taskUuid or uuid4())
-            self.addTaskInstance(task)
+            self.addTaskInstance(task, parent)
             return
 
         if len(requiredFields) == 1:
@@ -172,8 +188,8 @@ class MissionDocument(QObject):
         )
         self.addTaskInstance(task)
 
-    def addTaskInstance(self, task: Task) -> None:
-        cmd = AddTaskUndoCommand(self, task)
+    def addTaskInstance(self, task: Task, parent: TaskGroup | None = None) -> None:
+        cmd = AddTaskUndoCommand(self, task, parent)
 
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -183,22 +199,38 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _addTaskAt(self, task: Task, index: int):
+    def _container(self, parent_uuid: UUID | None) -> list:
+        if parent_uuid is None:
+            return self.plan.tasks
+        group = find_group(self.plan, parent_uuid)
+        return self.plan.tasks if group is None else group.children
+
+    def _addTaskAt(self, task: Task, index: int, parent_uuid: UUID | None = None):
         self.beforeTaskAdded.emit(task.uuid, index)
 
-        self.plan.tasks.insert(index, task)
+        self._container(parent_uuid).insert(index, task)
         self.index.registerTask(task)
 
         self.taskAdded.emit(task.uuid, index)
 
-    def deleteTaskAt(self, index: int):
+    def deleteTaskAt(self, index: int) -> None:
         try:
             task = self.plan.tasks[index]
         except IndexError:
-            # TODO: invalid index
             return
+        if isinstance(task, Task):
+            self.deleteTask(task)
 
-        cmd = DeleteTaskUndoCommand(self, task)
+    def deleteTask(self, task: Task) -> None:
+        parent = _owner_group(self.plan.tasks, task)
+        if parent is False:
+            return
+        container = self.plan.tasks if parent is None else parent.children
+        try:
+            index = container.index(task)
+        except ValueError:
+            return
+        cmd = DeleteTaskUndoCommand(self, task, parent)
 
         text = f"Delete task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -209,12 +241,10 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _deleteTaskAt(self, index: int):
-        task = self.plan.tasks[index]
+    def _deleteTaskAt(self, index: int, parent_uuid: UUID | None = None):
+        task = self._container(parent_uuid).pop(index)
 
         self.beforeTaskDeleted.emit(task.uuid)
-
-        self.plan.tasks.pop(index)
         self.index.forgetTask(task.uuid)
 
         self.taskDeleted.emit(task.uuid, index)
@@ -391,3 +421,24 @@ class MissionDocument(QObject):
         task.description = value
         self.layerBridge.updateTaskDescriptionLabel(task.uuid, value)
         self.taskChanged.emit(task.uuid)
+
+
+def _owner_group(nodes: list, target, owner: TaskGroup | None = None):
+    if target in nodes:
+        return owner
+    for node in nodes:
+        if isinstance(node, TaskGroup):
+            found = _owner_group(node.children, target, node)
+            if found is not False:
+                return found
+    return False
+
+
+def _remove_group(nodes: list, group: TaskGroup) -> bool:
+    if group in nodes:
+        nodes.remove(group)
+        return True
+    for node in nodes:
+        if isinstance(node, TaskGroup) and _remove_group(node.children, group):
+            return True
+    return False

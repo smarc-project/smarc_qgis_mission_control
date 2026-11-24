@@ -17,7 +17,7 @@ class MissionIndex:
     @classmethod
     def fromMissionPlan(cls, plan: MissionPlan) -> 'MissionIndex':
         index = cls(plan)
-        for task in plan.tasks:
+        for task in plan.leaves():
             index.registerTask(task)
 
         return index
@@ -86,10 +86,11 @@ class MissionIndex:
 
         if index == 0:
             # Previous on a previous task
-            taskIndex = self.plan.tasks.index(task)
+            ordered = self.plan.leaves()
+            taskIndex = ordered.index(task)
             taskIndex -= 1
             while taskIndex >= 0:
-                task = self.plan.tasks[taskIndex]
+                task = ordered[taskIndex]
                 waypoints = list(iterTaskWaypoints(task))
                 if len(waypoints):
                     # Task has waypoints, last one is the one we are looking for
@@ -114,10 +115,11 @@ class MissionIndex:
 
         if index == len(waypoints) - 1:
             # Next on a following task
-            taskIndex = self.plan.tasks.index(task)
+            ordered = self.plan.leaves()
+            taskIndex = ordered.index(task)
             taskIndex += 1
-            while taskIndex < len(self.plan.tasks):
-                task = self.plan.tasks[taskIndex]
+            while taskIndex < len(ordered):
+                task = ordered[taskIndex]
                 waypoints = list(iterTaskWaypoints(task))
                 if len(waypoints):
                     # Task has waypoints, first one is the one we are looking for

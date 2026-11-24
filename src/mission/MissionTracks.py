@@ -260,7 +260,7 @@ class MissionTracks(QObject):
 
         data = []
         # Discover all the waypoints and their tasks
-        for task in plan.tasks:
+        for task in plan.leaves():
             for waypoint in iterTaskWaypoints(task):
                 data.append((waypoint, task.uuid))
 

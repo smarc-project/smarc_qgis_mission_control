@@ -263,7 +263,7 @@ class MissionLayerBridge(QObject):
         self.tracks = MissionTracks(self.parent(), self._layerGroup, self)
 
     def _populateLayers(self, plan: MissionPlan) -> None:
-        for task in plan.tasks:
+        for task in plan.leaves():
             self._importTask(task)
 
     def _importTask(self, task: Task) -> None:

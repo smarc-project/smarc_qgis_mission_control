@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from qgis.PyQt.QtWidgets import QUndoCommand
 
+from ..domain.missionplan import find_group
 from ..domain.tasks import Task
 from ..domain.waypoints import Waypoint
 
@@ -35,36 +36,40 @@ class MissionUndoCommand(QUndoCommand):
 class AddTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: MissionDocument, task: Task) -> None:
+    def __init__(self, doc: MissionDocument, task: Task, parent=None) -> None:
         super().__init__(doc)
 
         self._task = task
-        self._index = len(self._doc.plan.tasks)
+        self._parent_uuid = None if parent is None else parent.uuid
+        container = doc.plan.tasks if parent is None else parent.children
+        self._index = len(container)
 
     def redo(self) -> None:
         print(self.__class__.__name__, 'redo')
-        self._doc._addTaskAt(self._task, self._index)
+        self._doc._addTaskAt(self._task, self._index, self._parent_uuid)
 
     def undo(self) -> None:
         print(self.__class__.__name__, 'undo')
-        self._doc._deleteTaskAt(self._index)
+        self._doc._deleteTaskAt(self._index, self._parent_uuid)
 
 class DeleteTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: MissionDocument, task: Task) -> None:
+    def __init__(self, doc: MissionDocument, task: Task, parent=None) -> None:
         super().__init__(doc)
 
         self._task = task
-        self._index = self._doc.plan.tasks.index(self._task)
+        self._parent_uuid = None if parent is None else parent.uuid
+        container = doc.plan.tasks if parent is None else parent.children
+        self._index = container.index(self._task)
 
     def redo(self) -> None:
         print(self.__class__.__name__, 'redo')
-        self._doc._deleteTaskAt(self._index)
+        self._doc._deleteTaskAt(self._index, self._parent_uuid)
 
     def undo(self) -> None:
         print(self.__class__.__name__, 'undo')
-        self._doc._addTaskAt(self._task, self._index)
+        self._doc._addTaskAt(self._task, self._index, self._parent_uuid)
 
 class AddWaypointUndoCommand(MissionUndoCommand):
     _task: Task
