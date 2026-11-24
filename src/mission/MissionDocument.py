@@ -163,6 +163,7 @@ class MissionDocument(QObject):
                     description = description,
                     taskUuid = taskUuid or uuid4(),
                     waypointUuid = uuid4(),
+                    parentUuid = None if parent is None else parent.uuid,
                 )
                 # TODO: get mapManager from parent
                 self.parent().mapManager.pickInitialWaypoint(pending)
@@ -186,7 +187,8 @@ class MissionDocument(QObject):
             uuid = pendingTask.taskUuid,
             **{pendingTask.fieldName: waypoint}
         )
-        self.addTaskInstance(task)
+        group = None if pendingTask.parentUuid is None else find_group(self.plan, pendingTask.parentUuid)
+        self.addTaskInstance(task, group)
 
     def addTaskInstance(self, task: Task, parent: TaskGroup | None = None) -> None:
         cmd = AddTaskUndoCommand(self, task, parent)

@@ -107,6 +107,7 @@ class PendingWaypointTask:
     description: str
     taskUuid: UUID
     waypointUuid: UUID
+    parentUuid: UUID | None = None
 
 
 class UnsupportedTaskCreationError(ValueError):

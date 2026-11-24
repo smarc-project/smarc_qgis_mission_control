@@ -53,10 +53,11 @@ def test_a_concurrent_group_nests_under_the_sequence(qgis_app, tmp_path: Path):
     doc = MissionDocument(loaded, tmp_path / "mission.json")
     widget = MissionPlanWidget(MissionContext())
     widget.onActiveMissionChanged(doc)
-    widget.resize(520, 320)
+    widget.resize(640, 420)
     widget.ui.taskList.expandAll()
     widget.show()
     qgis_app.processEvents()
+    widget.grab().save("/tmp/mission_plan_panel.png")
 
     root = widget.taskListModel.index(0, 0)
     assert widget.taskListModel.rowCount(root) == 2
@@ -79,3 +80,28 @@ def test_a_concurrent_group_nests_under_the_sequence(qgis_app, tmp_path: Path):
     group = widget.taskListModel.index(1, 0, root)
     assert widget.taskListModel.rowCount(group) == 3
     assert widget.taskListModel.data(widget.taskListModel.index(2, 1, group)) == "seq"
+
+
+def test_a_map_click_task_lands_in_the_selected_group(qgis_app, tmp_path: Path):
+    from uuid import uuid4
+
+    from qgis.core import QgsPointXY
+
+    from src.domain.tasks import MoveToTask, PendingWaypointTask
+    from src.domain.waypoints import GeoPoint
+
+    group = TaskGroup(kind="conc", description="together")
+    plan = MissionPlan(name="seq", description="out", tasks=[group])
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+    pending = PendingWaypointTask(
+        taskCls=MoveToTask,
+        fieldName="waypoint",
+        waypointCls=GeoPoint,
+        description="there",
+        taskUuid=uuid4(),
+        waypointUuid=uuid4(),
+        parentUuid=group.uuid,
+    )
+    doc.addPendingWaypointTask(pending, QgsPointXY(18.07, 59.35))
+    assert doc.plan.tasks[0].children[0].description == "there"
+    assert doc.plan.toJson()["children"][0]["children"][0]["name"] == "move-to"

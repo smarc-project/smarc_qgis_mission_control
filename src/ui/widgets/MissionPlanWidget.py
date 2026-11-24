@@ -247,6 +247,7 @@ class MissionPlanWidget(QWidget):
     def _addGroupButton(self, kind: str, label: str) -> None:
         button = QToolButton(self.ui.taskListSidebar)
         button.setText(label)
+        button.setToolButtonStyle(Qt.ToolButtonTextOnly)
         button.clicked.connect(lambda: self.onAddGroup(kind))
         self.ui.verticalLayout_2.addWidget(button)
 
@@ -254,7 +255,7 @@ class MissionPlanWidget(QWidget):
         doc = self._document()
         if doc is None:
             return
-        doc.addGroup(kind, kind, self._selected_group())
+        doc.addGroup(kind, "Sequence" if kind == "seq" else "Concurrent", self._selected_group())
 
     def _select_family(self, index) -> None:
         self._selecting_family = True
