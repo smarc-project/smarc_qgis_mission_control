@@ -2,10 +2,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from qgis.core import (
-    QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform,
     QgsPointXY,
-    QgsProject,
 )
 from qgis.gui import QgsMapCanvas, QgsMapMouseEvent, QgsMapTool, QgsRubberBand
 from qgis.utils import iface
@@ -15,23 +12,16 @@ from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QAction
 
 from ..domain.tasks import PendingWaypointTask
+from .mapcoords import mapToWgs84
+from .RotateWaypointsTool import RotateWaypointsMapTool
 
 __all__ = ["MissionMapManager"]
 
 class MyMapTool(QgsMapTool):
     mapClicked = pyqtSignal(QgsPointXY, Qt.MouseButton)
 
-    def _toWgs84(self, point: QgsPointXY) -> QgsPointXY:
-        """Helper to transform a point from map canvas CRS to EPSG:4326 (required)."""
-        canvas_crs = self.canvas().mapSettings().destinationCrs()
-        wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
-        if canvas_crs == wgs84:
-            return point
-        transform = QgsCoordinateTransform(canvas_crs, wgs84, QgsProject.instance())
-        return transform.transform(point)
-
     def canvasReleaseEvent(self, e: QgsMapMouseEvent):
-        point = self._toWgs84(self.toMapCoordinates(e.pos()))
+        point = mapToWgs84(self.canvas(), self.toMapCoordinates(e.pos()))
         if e.button() == Qt.MouseButton.RightButton:
             # Disable self
             ...
@@ -139,10 +129,6 @@ class SelectLocationMapTool(MyMapTool):
             self._rightRb.show()
             self._rightRb.movePoint(0, point)
 
-# QGIS's Edit > Edit Geometry > Rotate Feature(s). QgisInterface has no accessor
-# for it (only actionMoveFeature), so it is found by its object name.
-QGIS_ROTATE_FEATURE_ACTION = 'mActionRotateFeature'
-
 class MissionMapManager(QObject):
     _canvas: QgsMapCanvas
 
@@ -172,6 +158,9 @@ class MissionMapManager(QObject):
         self._addWaypointTool.mapClicked.connect(
             self.onAddWaypointToolMapClicked
         )
+
+        self._rotateTool = RotateWaypointsMapTool(self._canvas)
+        self._rotateTool.rotated.connect(self.onWaypointsRotated)
 
     # Map Tools
     def onAddWaypointToolMapClicked(self, point: QgsPointXY, button: Qt.MouseButton):
@@ -263,29 +252,37 @@ class MissionMapManager(QObject):
             self._canvas.setMapTool(self._previousTool)
             self._selectLocationTool.setAction(None)
 
-    @pyqtSlot(list)
-    def onRotateWaypointsRequested(self, waypointUuids: list[UUID]) -> None:
-        """Select these waypoints and start QGIS's Rotate Feature(s) on them.
+    @pyqtSlot(QAction, list, bool)
+    def onRotateWaypointsRequested(self, action: QAction, waypointUuids: list[UUID],
+                                   active: bool) -> None:
+        if not active:
+            self._canvas.setMapTool(self._previousTool)
+            self._rotateTool.setAction(None)
+            return
+        doc = self.parent().activeDocument()
+        if doc is None:
+            action.setChecked(False)
+            return
+        positions = {}
+        for uuid in waypointUuids:
+            waypoint = doc.index.waypointByUuid(uuid)
+            if waypoint is not None:
+                positions[uuid] = QgsPointXY(waypoint.longitude, waypoint.latitude)
+        if len(positions) < 2:
+            action.setChecked(False)
+            return
+        self._previousTool = self._canvas.mapTool()
+        self._rotateTool.setAction(action)
+        self._rotateTool.configure(positions)
+        self._canvas.setMapTool(self._rotateTool)
 
-        The mission follows through the layer's geometryChanged, like any map edit.
-        """
+    @pyqtSlot(dict)
+    def onWaypointsRotated(self, positions: dict) -> None:
         doc = self.parent().activeDocument()
         if doc is None:
             return
-        bridge = doc.layerBridge
-        fids = [bridge.featureIdForWaypointUuid(uuid) for uuid in waypointUuids]
-        fids = [fid for fid in fids if fid is not None]
-        if not fids:
-            return
-        rotate = iface.mainWindow().findChild(QAction, QGIS_ROTATE_FEATURE_ACTION)
-        if rotate is None:
-            iface.messageBar().pushWarning(
-                "SMaRC Mission Control",
-                "QGIS's Rotate Feature(s) tool was not found; use Edit > Edit Geometry instead.")
-            return
-        iface.setActiveLayer(bridge.waypointLayer)
-        bridge.waypointLayer.selectByIds(fids)
-        rotate.trigger()
+        doc.setWaypointPositions(
+            {uuid: (p.y(), p.x()) for uuid, p in positions.items()}, "Rotate waypoints")
 
     @pyqtSlot(QAction, int, UUID, str, bool)
     def onAddWaypointRequested(self, action: QAction, insertAt: int, taskUuid: UUID,

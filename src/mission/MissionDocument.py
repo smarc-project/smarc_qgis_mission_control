@@ -331,6 +331,17 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
+    def setWaypointPositions(self, positions: dict[UUID, tuple[float, float]],
+                             text: str = "Move waypoints") -> None:
+        """Move several waypoints, (latitude, longitude) each, as one undo step."""
+        undoStack = self.layerBridge.waypointLayer.undoStack()
+        undoStack.beginMacro(text)
+        try:
+            for waypointUuid, (latitude, longitude) in positions.items():
+                self.setWaypointPosition(waypointUuid, latitude, longitude)
+        finally:
+            undoStack.endMacro()
+
     def _setWaypointPosition(self, waypoint: Waypoint, latitude: float,
                              longitude: float):
         waypoint.latitude = latitude

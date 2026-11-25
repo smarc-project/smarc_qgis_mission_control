@@ -23,7 +23,7 @@ class WaypointTableWidget(QWidget):
 
     addWaypointRequested = pyqtSignal(QAction, int, UUID, str, bool)
     selectLocationRequested = pyqtSignal(QAction, UUID, bool)
-    rotateWaypointsRequested = pyqtSignal(list) # list[UUID]
+    rotateWaypointsRequested = pyqtSignal(QAction, list, bool) # list[UUID]
 
     def __init__(self, taskCls: Type[Task], fieldName: str, waypointCls: Type[Waypoint],
                  missionContext: MissionContext, parent: QWidget|None = None):
@@ -104,15 +104,17 @@ class WaypointTableWidget(QWidget):
         # The button takes its enabled state from this action, so the action is what gets disabled.
         moveWaypointAction.setEnabled(False)
         self.ui.buttonMoveWaypoint.setDefaultAction(moveWaypointAction)
-        # Button "Rotate Waypoints": hands the waypoints to QGIS's own Rotate Feature(s) tool.
+        # Button "Rotate Waypoints": turns the waypoints around their centre on the map.
         self._rotateWaypointsAction = rotateWaypointsAction = QAction(
             QgsApplication.getThemeIcon('mActionRotatePointSymbols.svg'),
             "Rotate Waypoints"
         )
         rotateWaypointsAction.setToolTip(
             "Rotate the selected waypoints, or all of this task's, on the map: "
-            "click, move the mouse to turn them around their centre, click again to drop.")
-        rotateWaypointsAction.triggered.connect(self.onRotateWaypointsTriggered)
+            "click, move the mouse to turn them around their centre, click again to drop. "
+            "Right-click or Esc cancels.")
+        rotateWaypointsAction.setCheckable(True)
+        rotateWaypointsAction.toggled.connect(self.onRotateWaypointsToggled)
         rotateWaypointsAction.setEnabled(False)
         self.ui.buttonRotateWaypoints.setDefaultAction(rotateWaypointsAction)
         # Waypoints come and go without a selection change.
@@ -132,11 +134,11 @@ class WaypointTableWidget(QWidget):
 
     def bind(self, doc: MissionDocument, taskUuid: UUID):
         # A model reset clears the selection without selectionChanged, so stop here.
-        self._stopMoving()
+        self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
 
     def unbind(self):
-        self._stopMoving()
+        self._stopMapTools()
         self._model.unbind()
 
     @pyqtSlot(QItemSelection, QItemSelection)
@@ -149,10 +151,12 @@ class WaypointTableWidget(QWidget):
         self.ui.buttonRemoveWaypoint.setEnabled(bool(rows))
         self._moveWaypointAction.setEnabled(len(rows) == 1)
         self._refreshRotateEnabled()
-        # The tool moves one waypoint. A different selection ends it.
+        # Each tool works on the waypoints picked when it started; a new selection ends it.
         if self._movingUuid is not None and (
                 len(rows) != 1 or self._model.item(rows[0].row()).uuid != self._movingUuid):
-            self._stopMoving()
+            self._moveWaypointAction.setChecked(False)
+        if self._rotateWaypointsAction.isChecked():
+            self._rotateWaypointsAction.setChecked(False)
         # TODO
         # self.ui.buttonMoveWaypointUp.setEnabled(bool(rows) and rows[0].row() > 0)
         # self.ui.buttonMoveWaypointDown.setEnabled(bool(rows) \
@@ -171,7 +175,7 @@ class WaypointTableWidget(QWidget):
     @pyqtSlot(bool)
     def onEditModeChanged(self, editMode: bool):
         if not editMode:
-            self._stopMoving()
+            self._stopMapTools()
         self._model.setEditable(editMode)
         self.ui.waypointTableSideBar.setEnabled(editMode)
         self.ui.waypointTable.setEnabled(editMode)
@@ -220,11 +224,15 @@ class WaypointTableWidget(QWidget):
         # Turning one point around itself does nothing.
         self._rotateWaypointsAction.setEnabled(len(self._waypointsToRotate()) >= 2)
 
-    @pyqtSlot()
-    def onRotateWaypointsTriggered(self) -> None:
-        self._stopMoving()
-        self.rotateWaypointsRequested.emit(self._waypointsToRotate())
+    @pyqtSlot(bool)
+    def onRotateWaypointsToggled(self, state: bool) -> None:
+        if state and self._moveWaypointAction.isChecked():
+            self._moveWaypointAction.setChecked(False)
+        self.rotateWaypointsRequested.emit(
+            self._rotateWaypointsAction, self._waypointsToRotate(), state)
 
-    def _stopMoving(self) -> None:
+    def _stopMapTools(self) -> None:
         if self._moveWaypointAction.isChecked():
             self._moveWaypointAction.setChecked(False)
+        if self._rotateWaypointsAction.isChecked():
+            self._rotateWaypointsAction.setChecked(False)
