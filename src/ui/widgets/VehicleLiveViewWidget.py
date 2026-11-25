@@ -32,7 +32,7 @@ class VehicleLiveViewWidget(QWidget):
 
     def setup(self):
         self.ui.vehicleNameLabel.setText(self._vehicleTopic.split('/')[-1])
-        self.ui.modeLabel.setText('Mode')
+        self.ui.modeLabel.setText('')
         self.ui.statusLabel.setText('Status')
 
         self.ui.lookAtButton.setIcon(
@@ -59,7 +59,7 @@ class VehicleLiveViewWidget(QWidget):
         self.ui.gifLabel.setMovie(self.heartbeat_gif)
 
     def updateState(self, state: VehicleState):
-        self.ui.modeLabel.setText(f'({state.mode:s})')
+        self.ui.modeLabel.setText(f'({state.mode})' if state.mode else '')
 
         if state.latitude is not None:
             self.ui.latValueLabel.setText(f'{state.latitude:.5f}°')

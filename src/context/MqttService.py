@@ -27,8 +27,8 @@ class VehicleEvent:
 
 @dataclass
 class VehicleHeartbeatEvent(VehicleEvent):
-    mode: str | None = "Mode"
-    pass
+    # "real" or "simulation", from the vehicle's topic.
+    mode: str
 
 @dataclass
 class VehicleSensorEvent(VehicleEvent):
@@ -166,8 +166,8 @@ class MqttService(QObject):
             data = json.loads(message.payload)
             event = VehicleHeartbeatEvent(
                 vehicleTopic = vehicleTopic,
+                mode = mode,
             )
-            event.mode = mode
             
             print(event)
             self.vehicleHeartbeat.emit(event)
