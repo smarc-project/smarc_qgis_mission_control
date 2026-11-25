@@ -77,6 +77,9 @@ class FleetMapManager(QObject):
     @pyqtSlot()
     def _setupWaypointLayer(self):
         qgs = QgsProject.instance()
+        # Our live layer is not the user's work: adding it must not make QGIS
+        # ask to save an otherwise untouched project on quit.
+        wasDirty = qgs.isDirty()
         # Remove any stale layers
         matching = qgs.mapLayersByName('SMaRCVehiclePositionLayer')
         qgs.removeMapLayers([l.id() for l in matching])
@@ -99,6 +102,9 @@ class FleetMapManager(QObject):
             QgsField('is-current', QVariant.Bool),
         ])
         self._waypointLayer.updateFields()
+        # Live positions are meant to be thrown away; skip QGIS's
+        # "temporary scratch layers will be lost" warning for this layer.
+        self._waypointLayer.setCustomProperty('skipMemoryLayersCheck', 1)
 
         # Customized renderer which will colorize points for each vehicle
         self._waypointLayer.setRenderer(QgsCategorizedSymbolRenderer("vehicle-name"))
@@ -113,6 +119,7 @@ class FleetMapManager(QObject):
 
         # Insert the layer at top of layer tree
         QgsProject.instance().layerTreeRoot().insertLayer(0, self._waypointLayer)
+        qgs.setDirty(wasDirty)
 
         #TODO auto-select/highlight newly created layer
 
