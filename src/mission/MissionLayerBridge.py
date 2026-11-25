@@ -22,6 +22,7 @@ from qgis.core import (  #QgsTextBackgroundSettings,
     QgsVectorLayerSimpleLabeling,
 )
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot  #, QSizeF
 from qgis.PyQt.QtGui import QColor
 
@@ -353,7 +354,7 @@ class MissionLayerBridge(QObject):
             case _ as unreachable:
                 assert_never(unreachable)
 
-    @pyqtSlot('QgsFeatureId', QgsGeometry)
+    # No @pyqtSlot('QgsFeatureId', QgsGeometry): QGIS 3.44 refuses the connection with it.
     def onGeometryChanged(self, fid: int, geom: QgsGeometry) -> None:
         print('onGeometryChanged', fid, geom)
 
@@ -482,6 +483,13 @@ class MissionLayerBridge(QObject):
         else:
             qgs.removeMapLayer(layerId)
 
-        root = QgsProject.instance().layerTreeRoot()
-
-        self._layerGroup.parent().removeChildNode(self._layerGroup)
+        if sip.isdeleted(self._layerGroup):
+            # Project > Exit closes the project, deleting our groups, before plugins unload.
+            return
+        smarcGroup = self._layerGroup.parent()
+        smarcGroup.removeChildNode(self._layerGroup)
+        # The last mission takes the shared group with it. A group left in the layer
+        # tree is removed during QGIS's own teardown, after its layer panel is gone,
+        # and that crashes QGIS on quit.
+        if smarcGroup.name() == self.SMARC_GROUP_NAME and not smarcGroup.children():
+            smarcGroup.parent().removeChildNode(smarcGroup)
