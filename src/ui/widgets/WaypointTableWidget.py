@@ -19,9 +19,11 @@ class WaypointTableWidget(QWidget):
     _taskCls: Type[Task]
     _model: WaypointListModel
     _moveWaypointAction: QAction
+    _rotateWaypointsAction: QAction
 
     addWaypointRequested = pyqtSignal(QAction, int, UUID, str, bool)
     selectLocationRequested = pyqtSignal(QAction, UUID, bool)
+    rotateWaypointsRequested = pyqtSignal(list) # list[UUID]
 
     def __init__(self, taskCls: Type[Task], fieldName: str, waypointCls: Type[Waypoint],
                  missionContext: MissionContext, parent: QWidget|None = None):
@@ -61,6 +63,9 @@ class WaypointTableWidget(QWidget):
         self.selectLocationRequested.connect(
             self._missionContext.mapManager.onSelectLocationRequested
         )
+        self.rotateWaypointsRequested.connect(
+            self._missionContext.mapManager.onRotateWaypointsRequested
+        )
 
         # Waypoint Table
         self.ui.waypointTable.horizontalHeader().setSectionResizeMode(
@@ -99,6 +104,20 @@ class WaypointTableWidget(QWidget):
         # The button takes its enabled state from this action, so the action is what gets disabled.
         moveWaypointAction.setEnabled(False)
         self.ui.buttonMoveWaypoint.setDefaultAction(moveWaypointAction)
+        # Button "Rotate Waypoints": hands the waypoints to QGIS's own Rotate Feature(s) tool.
+        self._rotateWaypointsAction = rotateWaypointsAction = QAction(
+            QgsApplication.getThemeIcon('mActionRotatePointSymbols.svg'),
+            "Rotate Waypoints"
+        )
+        rotateWaypointsAction.setToolTip(
+            "Rotate the selected waypoints, or all of this task's, on the map: "
+            "click, move the mouse to turn them around their centre, click again to drop.")
+        rotateWaypointsAction.triggered.connect(self.onRotateWaypointsTriggered)
+        rotateWaypointsAction.setEnabled(False)
+        self.ui.buttonRotateWaypoints.setDefaultAction(rotateWaypointsAction)
+        # Waypoints come and go without a selection change.
+        for signal in (self._model.rowsInserted, self._model.rowsRemoved, self._model.modelReset):
+            signal.connect(self._refreshRotateEnabled)
         # Button "Move Up"
         self.ui.buttonMoveWaypointUp.setIcon(
             QgsApplication.getThemeIcon('mActionArrowUp.svg')
@@ -129,6 +148,7 @@ class WaypointTableWidget(QWidget):
         # Enable/disable waypoint table buttons as needed
         self.ui.buttonRemoveWaypoint.setEnabled(bool(rows))
         self._moveWaypointAction.setEnabled(len(rows) == 1)
+        self._refreshRotateEnabled()
         # The tool moves one waypoint. A different selection ends it.
         if self._movingUuid is not None and (
                 len(rows) != 1 or self._model.item(rows[0].row()).uuid != self._movingUuid):
@@ -187,6 +207,23 @@ class WaypointTableWidget(QWidget):
             return
         self._movingUuid = self._model.item(rows[0].row()).uuid
         self.selectLocationRequested.emit(action, self._movingUuid, True)
+
+    def _waypointsToRotate(self) -> list[UUID]:
+        """The selected waypoints, or every waypoint of the task when none is selected."""
+        rows = [index.row() for index in self.ui.waypointTable.selectionModel().selectedRows()]
+        if not rows:
+            rows = list(range(self._model.rowCount()))
+        return [self._model.item(row).uuid for row in rows]
+
+    @pyqtSlot()
+    def _refreshRotateEnabled(self) -> None:
+        # Turning one point around itself does nothing.
+        self._rotateWaypointsAction.setEnabled(len(self._waypointsToRotate()) >= 2)
+
+    @pyqtSlot()
+    def onRotateWaypointsTriggered(self) -> None:
+        self._stopMoving()
+        self.rotateWaypointsRequested.emit(self._waypointsToRotate())
 
     def _stopMoving(self) -> None:
         if self._moveWaypointAction.isChecked():
