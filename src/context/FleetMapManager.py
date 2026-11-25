@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 
 from qgis.core import (
     QgsCategorizedSymbolRenderer,
@@ -32,7 +33,16 @@ class VehicleMapObject:
     trackRubberBand: QgsRubberBand
     lastLongitude: float | None = None
     lastLatitude: float | None = None
-    lastFid: int | None = None
+    # Feature ids of the track, oldest first. The rubber band has one point per id.
+    fids: deque[int] = field(default_factory=deque)
+
+    @property
+    def lastFid(self) -> int | None:
+        return self.fids[-1] if self.fids else None
+
+
+# Positions kept per vehicle; at one position a second that is about a quarter of an hour.
+DEFAULT_TRACK_LENGTH = 1000
 
 class FleetMapManager(QObject):
     vehicleDiscovered = pyqtSignal(str)
@@ -45,6 +55,7 @@ class FleetMapManager(QObject):
         super().__init__(parent)
 
         self._vehicles: dict[str, VehicleMapObject] = {}
+        self._trackLength = DEFAULT_TRACK_LENGTH
         # If a layer is created at this point, it will mark QgsProject as dirty. This
         # will cause a popup to appear asking the user whether they want to save or
         # discard their project changes -- even if no project is loaded!
@@ -255,8 +266,30 @@ class FleetMapManager(QObject):
 
         self._waypointLayer.dataProvider().addFeature(feat)
         vehicle.trackRubberBand.addPoint(point)
-        vehicle.lastFid = feat.id()
+        vehicle.fids.append(feat.id())
+        self._trimTrack(vehicle)
         self._waypointLayer.triggerRepaint()
+
+    def setTrackLength(self, length: int) -> None:
+        """Keep at most `length` positions per vehicle; 0 keeps them all."""
+        self._trackLength = max(0, int(length))
+        for vehicle in self._vehicles.values():
+            self._trimTrack(vehicle)
+        if self._waypointLayer is not None:
+            self._waypointLayer.triggerRepaint()
+
+    def _trimTrack(self, vehicle: VehicleMapObject) -> None:
+        if self._trackLength == 0 or self._waypointLayer is None:
+            return
+        excess = len(vehicle.fids) - self._trackLength
+        if excess <= 0:
+            return
+        dropped = [vehicle.fids.popleft() for _ in range(excess)]
+        self._waypointLayer.dataProvider().deleteFeatures(dropped)
+        for _ in range(excess):
+            vehicle.trackRubberBand.removePoint(0, doUpdate=False)
+        vehicle.trackRubberBand.updatePosition()
+        vehicle.trackRubberBand.update()
 
     @pyqtSlot(str, bool)
     def onShowOnMapChanged(self, vehicleTopic: str, state: bool):
@@ -322,7 +355,7 @@ class FleetMapManager(QObject):
             vehicle.trackRubberBand.reset()
             vehicle.lastLatitude = None
             vehicle.lastLongitude = None
-            vehicle.lastFid = None
+            vehicle.fids.clear()
 
     def cleanup(self) -> None:
         if self._waypointLayer is None:
