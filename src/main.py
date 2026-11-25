@@ -13,6 +13,7 @@ from qgis.PyQt.QtWidgets import QAction, QMessageBox, QSizePolicy, QWidget
 
 from .context.FleetContext import FleetContext
 from .context.FleetMapManager import DEFAULT_TRACK_LENGTH
+from .context.FleetState import DEFAULT_INACTIVE_TIMEOUT
 from .mission.MissionContext import MissionContext
 from .ui.widgets.MissionControlDockWidget import MissionControlDockWidget
 from .ui.widgets.MqttConnectionDialog import MqttConnectionDialog
@@ -222,6 +223,8 @@ class SMaRCMissionControlPlugin(QObject):
                         "fleet": {
                             # Positions kept per vehicle on the map; 0 keeps them all.
                             "track-length": DEFAULT_TRACK_LENGTH,
+                            # Seconds of silence before a vehicle leaves the vehicle lists; 0 keeps it.
+                            "inactive-timeout": DEFAULT_INACTIVE_TIMEOUT,
                         },
                 }
     def _mergeSettings(self, defaults, loaded):
@@ -275,6 +278,9 @@ class SMaRCMissionControlPlugin(QObject):
         fleet = self.user_settings.get("fleet", {})
         self.fleetContext.mapManager.setTrackLength(
             fleet.get("track-length", DEFAULT_TRACK_LENGTH)
+        )
+        self.fleetContext.state.setInactiveTimeout(
+            fleet.get("inactive-timeout", DEFAULT_INACTIVE_TIMEOUT)
         )
         
     @pyqtSlot(bool)

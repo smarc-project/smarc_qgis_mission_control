@@ -54,6 +54,9 @@ class MqttService(QObject):
     vehicleHeartbeat = pyqtSignal(VehicleHeartbeatEvent)
     vehicleSensorEvent = pyqtSignal(VehicleSensorEvent)
     vehicleTaskStateEvent = pyqtSignal(VehicleTaskStateEvent)
+    # Any message under a vehicle's topic except commands sent to it, including ones relayed for it by
+    # another unit (e.g. surface units filling in an underwater vehicle's sensors).
+    vehicleHeard = pyqtSignal(str)
 
     _client: mqtt.Client | None
     _context: str
@@ -161,6 +164,10 @@ class MqttService(QObject):
 
         # Reconstruct vehicle topic
         vehicleTopic = f'{root}/unit/{domain}/{mode}/{vehicleName}'
+        # A `.../command` topic is sent *to* the vehicle (and echoes our own
+        # commands back), so it says nothing about whether the vehicle is there.
+        if not vehicleSubtopic.endswith('/command'):
+            self.vehicleHeard.emit(vehicleTopic)
 
         if vehicleSubtopic == r'/heartbeat':
             data = json.loads(message.payload)

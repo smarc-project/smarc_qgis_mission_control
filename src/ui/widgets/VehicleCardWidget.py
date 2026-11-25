@@ -126,6 +126,11 @@ class VehicleCardWidget(QWidget):
     def setName(self, name: str):
         self.ui.vehicleNameLabel.setText(name)
 
+    def setOdd(self, value: bool):
+        """Alternate header shade, so neighbouring cards stand apart."""
+        self.setProperty("odd", value)
+        self._applyStyles()
+
     def _applyStyles(self):
         self.setStyleSheet(self.styleSheet())
 
