@@ -263,7 +263,7 @@ class MissionLayerBridge(QObject):
         self.tracks = MissionTracks(self.parent(), self._layerGroup, self)
 
     def _populateLayers(self, plan: MissionPlan) -> None:
-        for task in plan.tasks:
+        for task in plan.leaves():
             self._importTask(task)
 
     def _importTask(self, task: Task) -> None:
@@ -353,7 +353,7 @@ class MissionLayerBridge(QObject):
             case _ as unreachable:
                 assert_never(unreachable)
 
-    @pyqtSlot('QgsFeatureId', QgsGeometry)
+    # No @pyqtSlot('QgsFeatureId', QgsGeometry): QGIS 3.44 refuses the connection with it.
     def onGeometryChanged(self, fid: int, geom: QgsGeometry) -> None:
         print('onGeometryChanged', fid, geom)
 
