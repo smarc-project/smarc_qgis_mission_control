@@ -7,7 +7,7 @@ from qgis.core import QgsPointXY
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
-from ..domain.missionplan import MissionPlan
+from ..domain.missionplan import GroupKind, MissionPlan, TaskGroup, leaves
 from ..domain.tasks import (
     PendingWaypointTask,
     Task,
@@ -25,8 +25,10 @@ from ..domain.waypoints import Waypoint
 from .MissionIndex import MissionIndex
 from .MissionLayerBridge import MissionLayerBridge
 from .MissionUndoCommand import (
+    AddGroupUndoCommand,
     AddTaskUndoCommand,
     AddWaypointUndoCommand,
+    DeleteGroupUndoCommand,
     DeleteTaskUndoCommand,
     DeleteWaypointUndoCommand,
     MissionUndoCommand,
@@ -123,16 +125,65 @@ class MissionDocument(QObject):
         self.plan.schema().fields[fieldId].setValue(self.plan, value)
         self.missionChanged.emit()
 
+    def addGroup(self, kind: GroupKind, parent: TaskGroup | None = None) -> TaskGroup:
+        group = TaskGroup(kind=kind, description=kind.label)
+        cmd = AddGroupUndoCommand(self, group, parent)
+        with self.layerBridge.customEditCommand(f"Add {kind.label.lower()}"):
+            self._keepalive_undo.append(cmd)
+            self.layerBridge.waypointLayer.undoStack().push(cmd)
+        return group
+
+    def deleteGroup(self, group: TaskGroup) -> None:
+        location = self.plan.locate(group)
+        if location is None:
+            return
+        cmd = DeleteGroupUndoCommand(self, group, location[0])
+        with self.layerBridge.customEditCommand(f"Delete {group.kind.label.lower()} ({group.description})"):
+            # The waypoints leave the map in the same edit, so undo puts them back.
+            for leaf in leaves(group.children):
+                for waypoint in iterTaskWaypoints(leaf):
+                    fid = self.layerBridge.featureIdForWaypointUuid(waypoint.uuid)
+                    if fid is not None:
+                        self.layerBridge.waypointLayer.deleteFeature(fid)
+            self._keepalive_undo.append(cmd)
+            self.layerBridge.waypointLayer.undoStack().push(cmd)
+
+    def _addGroupAt(self, group: TaskGroup, index: int, parent_uuid: UUID | None = None) -> None:
+        # One leaf at a time through the task path, so the tracks link each leaf to its neighbours.
+        children, group.children = group.children, []
+        self._container(parent_uuid).insert(index, group)
+        for row, child in enumerate(children):
+            if isinstance(child, TaskGroup):
+                self._addGroupAt(child, row, group.uuid)
+            else:
+                self._addTaskAt(child, row, group.uuid)
+        self.taskAdded.emit(group.uuid, index)
+
+    def _deleteGroupAt(self, index: int, parent_uuid: UUID | None = None) -> None:
+        container = self._container(parent_uuid)
+        group = container[index]
+        children = list(group.children)
+        for row in reversed(range(len(children))):
+            if isinstance(children[row], TaskGroup):
+                self._deleteGroupAt(row, group.uuid)
+            else:
+                self._deleteTaskAt(row, group.uuid)
+        container.pop(index)
+        # The undo command holds this group. It gets its children back for the re-add.
+        group.children = children
+        self.taskDeleted.emit(group.uuid, index)
+
     # TODO: accept index in addTask?
     def addTask(self, taskType: str, description: str,
-                taskUuid: UUID | None = None) -> None:
+                taskUuid: UUID | None = None,
+                parent: TaskGroup | None = None) -> None:
         taskCls = TaskRegistry.lookup(taskType)
         requiredFields = taskCls.requiredFields()
 
         if not requiredFields:
             # Task can be added directly
             task = taskCls(description=description, uuid=taskUuid or uuid4())
-            self.addTaskInstance(task)
+            self.addTaskInstance(task, parent)
             return
 
         if len(requiredFields) == 1:
@@ -147,6 +198,7 @@ class MissionDocument(QObject):
                     description = description,
                     taskUuid = taskUuid or uuid4(),
                     waypointUuid = uuid4(),
+                    parentUuid = None if parent is None else parent.uuid,
                 )
                 # TODO: get mapManager from parent
                 self.parent().mapManager.pickInitialWaypoint(pending)
@@ -170,10 +222,11 @@ class MissionDocument(QObject):
             uuid = pendingTask.taskUuid,
             **{pendingTask.fieldName: waypoint}
         )
-        self.addTaskInstance(task)
+        group = self.plan.find_group(pendingTask.parentUuid)
+        self.addTaskInstance(task, group)
 
-    def addTaskInstance(self, task: Task) -> None:
-        cmd = AddTaskUndoCommand(self, task)
+    def addTaskInstance(self, task: Task, parent: TaskGroup | None = None) -> None:
+        cmd = AddTaskUndoCommand(self, task, parent)
 
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -183,22 +236,22 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _addTaskAt(self, task: Task, index: int):
+    def _container(self, parent_uuid: UUID | None) -> list:
+        return self.plan.children_of(self.plan.find_group(parent_uuid))
+
+    def _addTaskAt(self, task: Task, index: int, parent_uuid: UUID | None = None):
         self.beforeTaskAdded.emit(task.uuid, index)
 
-        self.plan.tasks.insert(index, task)
+        self._container(parent_uuid).insert(index, task)
         self.index.registerTask(task)
 
         self.taskAdded.emit(task.uuid, index)
 
-    def deleteTaskAt(self, index: int):
-        try:
-            task = self.plan.tasks[index]
-        except IndexError:
-            # TODO: invalid index
+    def deleteTask(self, task: Task) -> None:
+        location = self.plan.locate(task)
+        if location is None:
             return
-
-        cmd = DeleteTaskUndoCommand(self, task)
+        cmd = DeleteTaskUndoCommand(self, task, location[0])
 
         text = f"Delete task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -209,12 +262,14 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _deleteTaskAt(self, index: int):
-        task = self.plan.tasks[index]
+    def _deleteTaskAt(self, index: int, parent_uuid: UUID | None = None):
+        container = self._container(parent_uuid)
+        task = container[index]
 
+        # Listeners still need the task in the plan to find its neighbours.
         self.beforeTaskDeleted.emit(task.uuid)
 
-        self.plan.tasks.pop(index)
+        container.pop(index)
         self.index.forgetTask(task.uuid)
 
         self.taskDeleted.emit(task.uuid, index)
@@ -286,7 +341,7 @@ class MissionDocument(QObject):
 
         if index is None:
             # TODO: A single waypoint field cannot be removed independently of its task
-            self.deleteTaskAt(self.plan.tasks.index(task))
+            self.deleteTask(task)
             return
 
         fid = self.layerBridge.featureIdForWaypointUuid(waypointUuid)

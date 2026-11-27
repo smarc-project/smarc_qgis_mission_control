@@ -30,6 +30,7 @@ class LiveViewWidget(QWidget):
         self._fleetContext.state.vehicleDiscovered.connect(self.onVehicleDiscovered)
         self._fleetContext.state.vehicleUpdated.connect(self.onVehicleUpdated)
         self._fleetContext.state.vehicleExpired.connect(self.onVehicleExpired)
+        self._fleetContext.state.vehicleReturned.connect(self.onVehicleReturned)
         self._fleetContext.state.vehicleHeartbeat.connect(self.onVehicleHeartbeat)
         
     def setupUi2(self):
@@ -55,22 +56,27 @@ class LiveViewWidget(QWidget):
 
         self._refreshUiState()
 
+    def _shown(self) -> dict[str, VehicleLiveViewWidget]:
+        """Rows of the vehicles that are not hidden for being silent."""
+        state = self._fleetContext.state
+        return {t: w for t, w in self._vehicles.items() if state.isActive(t)}
+
     def selectAll(self):
         print("Selecting all...")
-        for vehicle in self._vehicles.values():
-            print(self._vehicles.values())
+        for vehicle in self._shown().values():
             vehicle.setChecked(True)
 
     def deselectAll(self):
+        # Hidden rows too: their last position is still on the map.
         for vehicle in self._vehicles.values():
             vehicle.setChecked(False)
 
     def collapseAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setCollapsed(True)
 
     def expandAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setCollapsed(False)
 
     def clearTracks(self):
@@ -98,21 +104,23 @@ class LiveViewWidget(QWidget):
         self._refreshUiState()
 
     def _refreshUiState(self):
-        if len(self._vehicles) == 0:
+        shown = self._shown()
+        selected = self._selected & shown.keys()
+        collapsed = self._collapsed & shown.keys()
+        if len(shown) == 0:
             # nothing is enabled if no cards are available
             self.ui.selectAllButton.setEnabled(False)
-            self.ui.deselectAllButton.setEnabled(False)
+            self.ui.deselectAllButton.setEnabled(bool(self._selected))
             self.ui.collapseAllButton.setEnabled(False)
             self.ui.expandAllButton.setEnabled(False)
-            self.ui.clearTracksButton.setEnabled(False)
+            self.ui.clearTracksButton.setEnabled(bool(self._vehicles))
         else:
-            allSelected = len(self._selected) == len(self._vehicles)
-            someSelected = len(self._selected) != 0
-            allCollapsed = len(self._collapsed) == len(self._vehicles)
-            someCollapsed = len(self._collapsed) != 0
+            allSelected = len(selected) == len(shown)
+            allCollapsed = len(collapsed) == len(shown)
+            someCollapsed = len(collapsed) != 0
 
             self.ui.selectAllButton.setEnabled(not allSelected)
-            self.ui.deselectAllButton.setEnabled(someSelected)
+            self.ui.deselectAllButton.setEnabled(bool(self._selected))
 
             self.ui.collapseAllButton.setEnabled(not allCollapsed)
             self.ui.expandAllButton.setEnabled(someCollapsed)
@@ -171,7 +179,19 @@ class LiveViewWidget(QWidget):
 
     @pyqtSlot(str)
     def onVehicleExpired(self, vehicleTopic: str):
-        ...
+        # Only the row goes; the vehicle's last position stays on the map.
+        self._setRowShown(vehicleTopic, False)
+
+    @pyqtSlot(str)
+    def onVehicleReturned(self, vehicleTopic: str):
+        self._setRowShown(vehicleTopic, True)
+
+    def _setRowShown(self, vehicleTopic: str, shown: bool):
+        widget = self._vehicles.get(vehicleTopic)
+        if widget is None:
+            return
+        widget.setVisible(shown)
+        self._refreshUiState()
 
     @pyqtSlot(str)
     def onVehicleHeartbeat(self, vehicleTopic: str):

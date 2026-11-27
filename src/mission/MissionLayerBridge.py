@@ -22,6 +22,7 @@ from qgis.core import (  #QgsTextBackgroundSettings,
     QgsVectorLayerSimpleLabeling,
 )
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot  #, QSizeF
 from qgis.PyQt.QtGui import QColor
 
@@ -154,7 +155,7 @@ class MissionLayerBridge(QObject):
         )
         markerSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertyStrokeWidth,
-            QgsProperty.fromExpression('coalesce("tolerance",0) * 4') # such that stroke radius matches tolerance
+            QgsProperty.fromExpression('coalesce("tolerance",0) * 2') # such that stroke radius matches tolerance
         )
 
         return QgsSingleSymbolRenderer(symbol)
@@ -263,7 +264,7 @@ class MissionLayerBridge(QObject):
         self.tracks = MissionTracks(self.parent(), self._layerGroup, self)
 
     def _populateLayers(self, plan: MissionPlan) -> None:
-        for task in plan.tasks:
+        for task in plan.leaves():
             self._importTask(task)
 
     def _importTask(self, task: Task) -> None:
@@ -482,6 +483,13 @@ class MissionLayerBridge(QObject):
         else:
             qgs.removeMapLayer(layerId)
 
-        root = QgsProject.instance().layerTreeRoot()
-
-        self._layerGroup.parent().removeChildNode(self._layerGroup)
+        if sip.isdeleted(self._layerGroup):
+            # Project > Exit closes the project, deleting our groups, before plugins unload.
+            return
+        smarcGroup = self._layerGroup.parent()
+        smarcGroup.removeChildNode(self._layerGroup)
+        # The last mission takes the shared group with it. A group left in the layer
+        # tree is removed during QGIS's own teardown, after its layer panel is gone,
+        # and that crashes QGIS on quit.
+        if smarcGroup.name() == self.SMARC_GROUP_NAME and not smarcGroup.children():
+            smarcGroup.parent().removeChildNode(smarcGroup)
