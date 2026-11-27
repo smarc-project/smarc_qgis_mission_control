@@ -56,6 +56,10 @@ class MissionDocument(QObject):
     # TODO: not very precise
     taskChanged = pyqtSignal(UUID)
 
+    # A group's own add and delete. The task signals above carry only tasks.
+    groupAdded = pyqtSignal(UUID, int)
+    groupDeleted = pyqtSignal(UUID, int)
+
     beforeWaypointAdded = pyqtSignal(UUID, str, UUID, int)
     waypointAdded = pyqtSignal(UUID, str, UUID)
     beforeWaypointDeleted = pyqtSignal(UUID, str, UUID, int)
@@ -157,7 +161,7 @@ class MissionDocument(QObject):
                 self._addGroupAt(child, row, group.uuid)
             else:
                 self._addTaskAt(child, row, group.uuid)
-        self.taskAdded.emit(group.uuid, index)
+        self.groupAdded.emit(group.uuid, index)
 
     def _deleteGroupAt(self, index: int, parent_uuid: UUID | None = None) -> None:
         container = self._container(parent_uuid)
@@ -171,7 +175,7 @@ class MissionDocument(QObject):
         container.pop(index)
         # The undo command holds this group. It gets its children back for the re-add.
         group.children = children
-        self.taskDeleted.emit(group.uuid, index)
+        self.groupDeleted.emit(group.uuid, index)
 
     # TODO: accept index in addTask?
     def addTask(self, taskType: str, description: str,
