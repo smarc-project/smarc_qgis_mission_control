@@ -8,6 +8,7 @@ from qgis.PyQt.QtCore import QCoreApplication, pyqtSlot
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
 
 from ...context.FleetContext import FleetContext
+from ...domain.missionplan import MissionPlan
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
 from ..generated.MissionControlDockWidgetUi import Ui_MissionControlDockWidget
@@ -42,14 +43,14 @@ class MissionControlDockWidget(QgsDockWidget):
         self.ui.tabFleetControl = FleetControlWidget(
             self._fleetContext.state,
             self._fleetContext.mapManager, # for having access to FleetMapManager.onLookAtRequest() from FleetControlWidget
-            self.ui.tabWidget
+            self.ui.tabWidget,
+            activePlan=self._activeMissionPlan,
         )
-        # TODO: cleanup
         self.ui.tabFleetControl.uploadMissionPlanRequested.connect(
-            lambda receivers: self._fleetContext.mqtt.onPublishMissionPlan(
-                self._missionContext.activeDocument().plan,
-                receivers
-            )
+            self._fleetContext.mqtt.onPublishMissionPlan
+        )
+        self.ui.tabFleetControl.abortTasksRequested.connect(
+            self._fleetContext.mqtt.onAbortTasksSignal
         )
         self.ui.tabFleetControl.skipTaskRequested.connect(
             self._fleetContext.mqtt.onSkipTaskSignal
@@ -124,6 +125,10 @@ class MissionControlDockWidget(QgsDockWidget):
         )
 
         self.retranslateUi2()
+
+    def _activeMissionPlan(self) -> MissionPlan | None:
+        doc = self._missionContext.activeDocument()
+        return None if doc is None else doc.plan
 
     def retranslateUi2(self):
         _translate = QCoreApplication.translate

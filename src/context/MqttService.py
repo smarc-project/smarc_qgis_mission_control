@@ -314,13 +314,27 @@ class MqttService(QObject):
             self.publishSkipTaskSignal(vehicleTopic, taskUuid)
 
     def publishSkipTaskSignal(self, vehicleTopic: str, taskUuid: UUID):
+        self.publishTaskSignal(vehicleTopic, taskUuid, '$enough')
+
+    @pyqtSlot(dict)
+    def onAbortTasksSignal(self, targets: dict[str, list[UUID]]) -> None:
+        for vehicleTopic, taskUuids in targets.items():
+            for taskUuid in taskUuids:
+                self.publishTaskSignal(vehicleTopic, taskUuid, '$abort')
+
+    def publishTaskSignal(
+        self,
+        vehicleTopic: str,
+        taskUuid: UUID,
+        signal: str,
+    ) -> None:
+        """Send one WARA-PS task signal ($enough, $abort, ...) to one executing task."""
         if self._client is None:
             # TODO
             return
         topic = f'{vehicleTopic}/exec/command'
-        receiver = vehicleTopic.split('/')[-1]
         data = {
-            'signal': '$enough',
+            'signal': signal,
             'task-uuid': str(taskUuid),
             'command': 'signal-task',
             'com-uuid': str(uuid4()),

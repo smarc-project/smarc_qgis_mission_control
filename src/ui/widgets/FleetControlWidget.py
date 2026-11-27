@@ -1,9 +1,12 @@
+from collections.abc import Callable
 from uuid import UUID
 
 from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-from qgis.PyQt.QtWidgets import QFrame, QWidget
+from qgis.PyQt.QtWidgets import QFrame, QMessageBox, QWidget
 
 from ...context.FleetState import FleetState
+from ...domain.missionplan import MissionPlan
+from ...domain.waraps import WaraPsExecutingTask, tasksBlockingPlan
 from ..generated.FleetControlWidgetUi import Ui_FleetControlWidget
 from .VehicleCardWidget import VehicleCardWidget
 
@@ -16,20 +19,31 @@ ABORT_MISSION_BUTTON_CLICKS_REQUIRED = 3
 
 
 class FleetControlWidget(QFrame):
-    uploadMissionPlanRequested = pyqtSignal(set)
+    uploadMissionPlanRequested = pyqtSignal(MissionPlan, set)
     skipTaskRequested = pyqtSignal(dict) # dict[str, UUID]: vehicleTopic → first task UUID
     pauseRequested = pyqtSignal(set)
     continueRequested = pyqtSignal(set)
     abortMissionRequested = pyqtSignal(set)
+    abortTasksRequested = pyqtSignal(dict) # dict[str, list[UUID]]: vehicleTopic → tasks to abort
     emergencyRequested = pyqtSignal(set)
     resetEmergencyRequested = pyqtSignal(set)
     clearTracksRequested = pyqtSignal()
 
-    def __init__(self, fleetState: FleetState, mapManager, parent: QWidget | None = None):
+    def __init__(
+        self,
+        fleetState: FleetState,
+        mapManager,
+        parent: QWidget | None = None,
+        activePlan: Callable[[], MissionPlan | None] = lambda: None,
+    ):
         super().__init__(parent)
 
         self._fleetState = fleetState
         self._mapManager = mapManager
+        self._activePlan = activePlan
+        # Overridden starts: vehicleTopic → (plan, the aborted tasks it waits out).
+        # The officer refuses the plan until those tasks leave tasks-executing.
+        self._plansAwaitingFreeServer: dict[str, tuple[MissionPlan, set[UUID]]] = {}
 
         self._selected: set[str] = set()
         self._collapsed: set[str] = set()
@@ -167,11 +181,83 @@ class FleetControlWidget(QFrame):
         hidden = len(self._vehicles) - len(shown)
         if hidden:
             text += f" · {hidden} silent, hidden"
+        for vehicleTopic in sorted(self._plansAwaitingFreeServer):
+            text += f" · {vehicleTopic.split('/')[-1]}: waiting to start"
         self.ui.vehiclesSelectedLabel.setText(text)
 
     @pyqtSlot()
-    def onUploadMissionPlanClicked(self):
-        self.uploadMissionPlanRequested.emit(self._selected)
+    def onUploadMissionPlanClicked(self) -> None:
+        plan = self._activePlan()
+        if plan is None:
+            return
+        free: set[str] = set()
+        blocking: dict[str, list[WaraPsExecutingTask]] = {}
+        for vehicleTopic in self._selected:
+            state = self._fleetState.vehicleState(vehicleTopic)
+            busy = tasksBlockingPlan(plan, state.executingTasks or []) if state else []
+            if busy:
+                blocking[vehicleTopic] = busy
+            else:
+                free.add(vehicleTopic)
+        # Free vehicles get the plan now; the officer would refuse it on the busy ones
+        # ("task already executing on ..."), so only those wait for the operator.
+        if free:
+            self.uploadMissionPlanRequested.emit(plan, free)
+        if blocking and self._confirmOverride(free, blocking):
+            self._overrideBusyServers(plan, blocking)
+
+    def _confirmOverride(
+        self,
+        sent: set[str],
+        blocking: dict[str, list[WaraPsExecutingTask]],
+    ) -> bool:
+        """Say which vehicles did not get the plan and why; True if the operator overrides."""
+        lines = []
+        if sent:
+            lines.append("Sent to " + ", ".join(sorted(t.split('/')[-1] for t in sent)) + ".")
+        for vehicleTopic, tasks in sorted(blocking.items()):
+            for task in tasks:
+                lines.append(
+                    f"Not sent to {vehicleTopic.split('/')[-1]}: its {task.type} server "
+                    f"is running \u201c{task.description}\u201d ({task.status})."
+                )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Action server busy")
+        box.setText("\n".join(lines))
+        box.setInformativeText(
+            "Override aborts the running task and sends this plan "
+            "once the vehicle reports the server free."
+        )
+        overrideButton = box.addButton("Override", QMessageBox.DestructiveRole)
+        box.setDefaultButton(box.addButton(QMessageBox.Cancel))
+        box.exec()
+        return box.clickedButton() is overrideButton
+
+    def _overrideBusyServers(
+        self,
+        plan: MissionPlan,
+        blocking: dict[str, list[WaraPsExecutingTask]],
+    ) -> None:
+        for vehicleTopic, tasks in blocking.items():
+            self._plansAwaitingFreeServer[vehicleTopic] = (plan, {task.uuid for task in tasks})
+        self.abortTasksRequested.emit(
+            {vehicleTopic: [task.uuid for task in tasks] for vehicleTopic, tasks in blocking.items()}
+        )
+        self._refreshUiState()
+
+    def _startPlanIfServerFree(self, vehicleTopic: str) -> None:
+        pending = self._plansAwaitingFreeServer.get(vehicleTopic)
+        state = self._fleetState.vehicleState(vehicleTopic)
+        if pending is None or state is None:
+            return
+        plan, aborted = pending
+        # An aborted task stays in tasks-executing until its server answers the cancel.
+        if any(task.uuid in aborted for task in state.executingTasks or []):
+            return
+        del self._plansAwaitingFreeServer[vehicleTopic]
+        self.uploadMissionPlanRequested.emit(plan, {vehicleTopic})
+        self._refreshUiState()
 
     @pyqtSlot()
     def onSkipTaskClicked(self):
@@ -256,6 +342,7 @@ class FleetControlWidget(QFrame):
         state = self._fleetState.vehicleState(vehicleTopic)
         assert(state)
         self._vehicles[vehicleTopic].updateState(state)
+        self._startPlanIfServerFree(vehicleTopic)
 
     @pyqtSlot(str)
     def onVehicleExpired(self, vehicleTopic: str):
