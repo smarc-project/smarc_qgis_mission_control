@@ -27,6 +27,8 @@ class VehicleCardWidget(QWidget):
 
         self.setName(name.split('/')[-1])
         self._name = name
+        # Empty until the vehicle's mode is known; see updateState.
+        self.ui.modeLabel.setText('')
 
     def setupUi2(self):
         # Draw own background
@@ -126,11 +128,16 @@ class VehicleCardWidget(QWidget):
     def setName(self, name: str):
         self.ui.vehicleNameLabel.setText(name)
 
+    def setOdd(self, value: bool):
+        """Alternate header shade, so neighbouring cards stand apart."""
+        self.setProperty("odd", value)
+        self._applyStyles()
+
     def _applyStyles(self):
         self.setStyleSheet(self.styleSheet())
 
     def updateState(self, state: VehicleState):
-        self.ui.modeLabel.setText(f'({state.mode:s})')
+        self.ui.modeLabel.setText(f'({state.mode})' if state.mode else '')
 
         self._taskListModel.setItems(state.executingTasks)
 

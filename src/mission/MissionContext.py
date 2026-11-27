@@ -7,7 +7,7 @@ from qgis.utils import iface
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from ..domain.missionplan import MissionPlan
+from ..domain.missionplan import GroupKind, MissionPlan
 from ..domain.tasks import PendingWaypointTask
 from ..domain.taskspatial import iterTaskWaypoints
 from .MissionDocument import MissionDocument
@@ -68,7 +68,7 @@ class MissionContext(QObject):
         # TODO: Bit hacky
         p = Path(path)
         plan = MissionPlan(
-            name = "seq",
+            name = GroupKind.SEQ.value,
             description = description
         )
         with p.open('w') as fp:
