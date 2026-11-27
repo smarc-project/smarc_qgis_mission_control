@@ -41,6 +41,10 @@ class Task(SchemaMixin):
             "params": JsonCodec.encodeSchema(self)
         }
 
+    def isNoGoArea(self) -> bool:
+        """Whether the task's areas keep the vehicle out. Most areas keep it in."""
+        return False
+
     @classmethod
     def fromJson(cls: Type[TaskInstanceT], data: dict) -> TaskInstanceT:
         if data["name"] != cls.type:
@@ -190,6 +194,9 @@ class SmarcStartGeofenceTask(Task):
     #: reads and which older mission files carry.
     waypoints: Annotated[GeoArea, Column("Area")] \
         = field(default_factory = list)
+
+    def isNoGoArea(self) -> bool:
+        return not self.stay_inside
 
 @task("smarc-stop-geofence")
 class SmarcStopGeofenceTask(Task):

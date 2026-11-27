@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from qgis.core import QgsGeometry, QgsPointXY, QgsWkbTypes
 
@@ -233,3 +233,55 @@ def test_route_neighbours_skip_area_corners(qgis_app, tmp_path: Path):
     assert doc.index.previousRouteWaypointByUuid(after.uuid) is before
     assert doc.index.nextRouteWaypointByUuid(corners[0].uuid) is None
     assert doc.index.previousRouteWaypointByUuid(corners[1].uuid) is None
+
+
+def _no_go_flags(doc: MissionDocument) -> dict[str, bool]:
+    """The area kind per task description, as the area layer stores it."""
+    return {
+        doc.index.taskByUuid(UUID(feat.attribute("task-uuid"))).description:
+            bool(feat.attribute("no-go"))
+        for feat in doc.layerBridge.areas.layer.getFeatures()
+    }
+
+
+def test_each_area_feature_says_whether_it_is_a_no_go_zone(qgis_app, tmp_path: Path):
+    def box() -> list[GeoPoint]:
+        return [_corner(59.0, 18.0), _corner(59.0, 18.1), _corner(59.1, 18.1)]
+
+    fence = _fence(box())
+    zone = SmarcStartGeofenceTask(description="zone", uuid=uuid4(), stay_inside=False,
+                                  waypoints=box())
+    search = SearchAreaTask(description="search", uuid=uuid4(), area=box())
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="areas",
+                       tasks=[fence, zone, search])
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+
+    assert _no_go_flags(doc) == {"fence": False, "zone": True, "search": False}
+
+    # Unticking StayInside turns the fence into a no-go zone, and undo turns it back
+    doc.startEditing()
+    stayInside = [f.name for f in SmarcStartGeofenceTask.schema().fields].index("stay_inside")
+    doc.setTaskField(fence.uuid, stayInside, False)
+    assert _no_go_flags(doc)["fence"] is True
+    doc.layerBridge.waypointLayer.undoStack().undo()
+    assert _no_go_flags(doc)["fence"] is False
+
+
+def test_only_no_go_zones_are_drawn_with_diagonal_lines(qgis_app, tmp_path: Path):
+    from qgis.core import QgsLinePatternFillSymbolLayer, QgsRuleBasedRenderer
+
+    plan, _ = _fenced_plan([])
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+    renderer = doc.layerBridge.areas.layer.renderer()
+    assert isinstance(renderer, QgsRuleBasedRenderer)
+
+    hatchedRules = {}
+    for rule in renderer.rootRule().children():
+        layers = rule.symbol().symbolLayers()
+        hatched = any(isinstance(layer, QgsLinePatternFillSymbolLayer) for layer in layers)
+        hatchedRules[rule.filterExpression()] = hatched
+        if hatched:
+            # The hatch lines run at 45 degrees
+            [hatch] = [layer for layer in layers if isinstance(layer, QgsLinePatternFillSymbolLayer)]
+            assert hatch.lineAngle() == 45
+    assert hatchedRules == {'NOT "no-go"': False, '"no-go"': True}

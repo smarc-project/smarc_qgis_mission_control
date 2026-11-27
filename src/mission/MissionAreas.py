@@ -10,15 +10,16 @@ from qgis.core import (
     QgsFillSymbol,
     QgsGeometry,
     QgsLayerTreeGroup,
+    QgsLinePatternFillSymbolLayer,
     QgsPointXY,
     QgsProject,
     QgsProperty,
+    QgsRuleBasedRenderer,
     QgsSimpleFillSymbolLayer,
-    QgsSingleSymbolRenderer,
     QgsVectorLayer,
 )
 
-from qgis.PyQt.QtCore import QObject, QVariant, pyqtSlot
+from qgis.PyQt.QtCore import QObject, Qt, QVariant, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.missionplan import MissionPlan
@@ -45,15 +46,21 @@ class MissionAreas(QObject):
     _fields: list[QgsField] = [
         QgsField("task-uuid", QVariant.String),
         QgsField("field-name", QVariant.String),
+        QgsField("no-go", QVariant.Bool),
     ]
 
     #: The geofence server, and a polygon, need at least three corners
     MIN_CORNERS: int = 3
     #: Out of 255, so the map under the area stays readable
     FILL_ALPHA: int = 60
-    COLOR_SELECTED_TASK = QColor("#D81B60")
+    #: Millimetres on screen
+    EDGE_WIDTH: float = 0.6
+    SELECTED_EDGE_WIDTH: float = 1.4
+    HATCH_SPACING: float = 3.0
+    HATCH_WIDTH: float = 0.3
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
+    COLOR_NO_GO = QColor("#D32F2F")
 
     def __init__(self,
                  doc: MissionDocument,
@@ -73,36 +80,65 @@ class MissionAreas(QObject):
 
         self._doc.taskAdded.connect(self.onTaskAdded)
         self._doc.beforeTaskDeleted.connect(self.onBeforeTaskDeleted)
+        # A task field such as StayInside can turn a fence into a no-go zone
+        self._doc.taskChanged.connect(self.redrawTaskAreas)
 
-    def _createRenderer(self, fillColor: str, strokeColor: str) -> QgsFeatureRenderer:
-        """A see-through fill with a solid edge; the colours are QGIS expressions."""
+    def _createSymbol(self, color: QColor, selectable: bool) -> QgsFillSymbol:
+        """A see-through fill with a solid edge, in the task's normal colour."""
         symbol = QgsFillSymbol()
         fillLayer = symbol.symbolLayer(0)
-        fillLayer.setStrokeWidth(0.6)
-        fillLayer.setDataDefinedProperty(
-            QgsSimpleFillSymbolLayer.PropertyFillColor,
-            QgsProperty.fromExpression(
-                f"set_color_part({fillColor}, 'alpha', {self.FILL_ALPHA})"
+        fill = QColor(color)
+        fill.setAlpha(self.FILL_ALPHA)
+        fillLayer.setFillColor(fill)
+        fillLayer.setStrokeColor(color)
+        fillLayer.setStrokeWidth(self.EDGE_WIDTH)
+        if selectable:
+            # The selected task's edge is thicker; its colour keeps meaning the kind
+            fillLayer.setDataDefinedProperty(
+                QgsSimpleFillSymbolLayer.PropertyStrokeWidth,
+                QgsProperty.fromExpression(f'''
+                    CASE WHEN array_contains(@selected_task_uuids, "task-uuid")
+                    THEN {self.SELECTED_EDGE_WIDTH}
+                    ELSE {self.EDGE_WIDTH} END
+                ''')
             )
-        )
-        fillLayer.setDataDefinedProperty(
-            QgsSimpleFillSymbolLayer.PropertyStrokeColor,
-            QgsProperty.fromExpression(strokeColor)
-        )
-        return QgsSingleSymbolRenderer(symbol)
+        return symbol
+
+    def _createNoGoSymbol(self, color: QColor, selectable: bool) -> QgsFillSymbol:
+        """The keep-in look with a dashed edge and diagonal lines: you can't be here."""
+        symbol = self._createSymbol(color, selectable)
+        symbol.symbolLayer(0).setStrokeStyle(Qt.DashLine)
+        hatch = QgsLinePatternFillSymbolLayer()
+        hatch.setLineAngle(45)
+        hatch.setDistance(self.HATCH_SPACING)
+        hatch.setColor(color)
+        hatch.setLineWidth(self.HATCH_WIDTH)
+        symbol.appendSymbolLayer(hatch)
+        return symbol
+
+    def _createRenderer(self,
+                        keepInColor: QColor,
+                        noGoColor: QColor,
+                        selectable: bool) -> QgsFeatureRenderer:
+        root = QgsRuleBasedRenderer.Rule(None)
+        root.appendChild(QgsRuleBasedRenderer.Rule(
+            self._createSymbol(keepInColor, selectable),
+            filterExp='NOT "no-go"',
+            label="Keep-in area",
+        ))
+        root.appendChild(QgsRuleBasedRenderer.Rule(
+            self._createNoGoSymbol(noGoColor, selectable),
+            filterExp='"no-go"',
+            label="No-go zone",
+        ))
+        return QgsRuleBasedRenderer(root)
 
     def _createActiveRenderer(self) -> QgsFeatureRenderer:
-        # Same highlight rule as the waypoint layer: the selected task stands out
-        color = f'''
-            CASE WHEN array_contains(@selected_task_uuids, "task-uuid")
-            THEN '{self.COLOR_SELECTED_TASK.name()}'
-            ELSE '{self.COLOR_ACTIVE.name()}' END
-        '''
-        return self._createRenderer(color, color)
+        return self._createRenderer(self.COLOR_ACTIVE, self.COLOR_NO_GO, True)
 
     def _createInactiveRenderer(self) -> QgsFeatureRenderer:
-        color = f"'{self.COLOR_INACTIVE.name()}'"
-        return self._createRenderer(color, color)
+        # Grey like the other inactive layers; the hatch still tells the kinds apart
+        return self._createRenderer(self.COLOR_INACTIVE, self.COLOR_INACTIVE, False)
 
     def _setupLayer(self, layerGroup: QgsLayerTreeGroup) -> None:
         self.layer = QgsVectorLayer(
@@ -157,6 +193,7 @@ class MissionAreas(QObject):
             feat.setGeometry(QgsGeometry.fromPolygonXY([ring]))
             feat.setAttribute("task-uuid", str(task.uuid))
             feat.setAttribute("field-name", spec.name)
+            feat.setAttribute("no-go", task.isNoGoArea())
             features.append(feat)
         return features
 
