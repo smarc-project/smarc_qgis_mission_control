@@ -163,7 +163,9 @@ class LiveViewWidget(QWidget):
             self._vehicles[vehicleTopic] = widget
             self.ui.vehicleListVLayout.addWidget(widget)
 
-            # Sync collapsed state with what the widget initializes to
+            # Sync checked and collapsed state with what the widget initializes to
+            if widget.isChecked():
+                self._selected.add(vehicleTopic)
             if widget.isCollapsed():
                 self._collapsed.add(vehicleTopic)
             else:

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import qgis.utils
 from qgis.core import QgsProject
@@ -8,6 +10,8 @@ from qgis.PyQt.QtWidgets import QMainWindow
 
 from src.context.FleetMapManager import FleetMapManager
 from src.context.FleetState import VehicleState
+from src.ui.widgets.LiveViewWidget import LiveViewWidget
+from src.ui.widgets.VehicleLiveViewWidget import VehicleLiveViewWidget
 
 SAM = "waraps/unit/subsurface/simulation/sam1"
 LOLO = "waraps/unit/subsurface/simulation/lolo1"
@@ -16,6 +20,10 @@ LOLO = "waraps/unit/subsurface/simulation/lolo1"
 class _Fleet(QObject):
     vehicleDiscovered = pyqtSignal(str)
     vehicleUpdated = pyqtSignal(str)
+    # The live view listens to these too; these vehicles never go silent.
+    vehicleExpired = pyqtSignal(str)
+    vehicleReturned = pyqtSignal(str)
+    vehicleHeartbeat = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -23,6 +31,9 @@ class _Fleet(QObject):
 
     def vehicleState(self, topic):
         return self._states.get(topic)
+
+    def isActive(self, topic: str) -> bool:
+        return True
 
     def move(self, topic, lon, lat):
         if topic not in self._states:
@@ -151,4 +162,21 @@ def test_an_unchecked_vehicle_that_moves_keeps_its_track_hidden(fleet):
     assert _visibleBands() == 1
     manager.clearAllVehicleMarkers()
     states.move(SAM, 2.0, 59.0)
+    assert _visibleBands() == 0
+
+
+def test_a_new_vehicle_starts_checked_in_the_live_view_and_shown_on_the_map(fleet):
+    states, manager = fleet
+    panel = LiveViewWidget(SimpleNamespace(state=states, mapManager=manager))
+    states.move(SAM, 0.0, 59.0)
+
+    [row] = panel.findChildren(VehicleLiveViewWidget)
+    assert row.isChecked() and row.ui.showOnMapCheckBox.isChecked()
+    assert _markersShown(SAM)
+    assert not panel.ui.selectAllButton.isEnabled()
+    assert panel.ui.deselectAllButton.isEnabled()
+
+    # So the first click on the box takes the vehicle off the map.
+    row.ui.showOnMapCheckBox.click()
+    assert not _markersShown(SAM)
     assert _visibleBands() == 0
