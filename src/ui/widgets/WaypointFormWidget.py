@@ -65,15 +65,20 @@ class WaypointFormWidget(AutomaticFormWidget):
         # self.ui.buttonSelectLocation.clicked.connect(self.onSelectLocationToggled)
 
 
-    def bind(self, doc: MissionDocument, taskUuid: UUID):
+    def bind(self, doc: MissionDocument, taskUuid: UUID) -> None:
+        # Select Location works on the waypoint bound before.
+        self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
         self._mapper.toFirst()
 
-    def unbind(self):
+    def unbind(self) -> None:
+        self._stopMapTools()
         self._model.unbind()
 
     @pyqtSlot(bool)
-    def onEditModeChanged(self, editMode: bool):
+    def onEditModeChanged(self, editMode: bool) -> None:
+        if not editMode:
+            self._stopMapTools()
         self.setEditMode(editMode)
         self.ui.buttonSelectLocation.setEnabled(editMode)
 
@@ -84,3 +89,7 @@ class WaypointFormWidget(AutomaticFormWidget):
             self._model.item(0).uuid,
             state
         )
+
+    def _stopMapTools(self) -> None:
+        # Unchecking the button stops the tool through onSelectLocationToggled.
+        self.ui.buttonSelectLocation.defaultAction().setChecked(False)

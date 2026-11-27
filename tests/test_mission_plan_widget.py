@@ -1,12 +1,16 @@
 from pathlib import Path
 
+from qgis.gui import QgsMapCanvas, QgsMapTool
+
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QAction
 
 from src.domain.missionplan import GroupKind, MissionPlan, TaskGroup
 from src.domain.tasks import MovePathTask
 from src.mission.MissionContext import MissionContext
 from src.mission.MissionDocument import MissionDocument
 from src.ui.widgets.MissionPlanWidget import MissionPlanWidget
+from src.ui.widgets.WaypointTableWidget import WaypointTableWidget
 
 
 def _open(plan: MissionPlan, tmp_path: Path) -> tuple[MissionPlanWidget, MissionDocument]:
@@ -216,3 +220,194 @@ def test_renaming_a_task_in_the_tree_keeps_the_tree_open(qgis_app, tmp_path: Pat
     assert doc.plan.tasks[0].children[0].description == "port"
     assert widget.ui.taskList.isExpanded(group)
     assert model.node(widget.ui.taskList.currentIndex()).description == "port"
+
+
+def _path(description: str, latitude: float) -> MovePathTask:
+    from uuid import uuid4
+
+    from src.domain.waypoints import GeoPoint
+
+    return MovePathTask(description=description, uuid=uuid4(), waypoints=[
+        GeoPoint(latitude=latitude + step, longitude=18.07, uuid=uuid4()) for step in (0.0, 0.01, 0.02)])
+
+
+def _editing_first_path(qgis_app, tmp_path: Path) -> tuple[
+        MissionPlanWidget, MissionDocument, QgsMapCanvas, QgsMapTool, WaypointTableWidget]:
+    """Two paths and two move-tos, in edit mode, the first path's editor shown, the user on Pan."""
+    import qgis.utils
+    from qgis.gui import QgsMapToolPan
+
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="out",
+                       tasks=[_path("first", 59.30), _path("second", 59.40),
+                              _move_to("there"), _move_to("there too")])
+    widget, doc = _open(plan, tmp_path)
+    widget.show()
+    doc.startEditing()
+    canvas = qgis.utils.iface.mapCanvas()
+    users_tool = QgsMapToolPan(canvas)
+    canvas.setMapTool(users_tool)
+    root = widget.taskListModel.index(0, 0)
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(0, 0, root))
+    qgis_app.processEvents()
+    table = widget.taskEditors["move-path"].findChild(WaypointTableWidget)
+    return widget, doc, canvas, users_tool, table
+
+
+def _start_move(table: WaypointTableWidget) -> QAction:
+    from qgis.PyQt.QtCore import QItemSelectionModel
+
+    table.ui.waypointTable.selectionModel().select(
+        table.ui.waypointTable.model().index(1, 0),
+        QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+    move = table.ui.buttonMoveWaypoint.defaultAction()
+    move.setChecked(True)
+    return move
+
+
+def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path):
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    action = _start_move(table)
+    assert canvas.mapTool() is not users_tool
+    root = widget.taskListModel.index(0, 0)
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(1, 0, root))
+
+    assert not action.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Path):
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    action = _start_move(table)
+    root = widget.taskListModel.index(0, 0)
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
+
+    # The path's editor is hidden now. Its tool must not keep editing that path.
+    assert not action.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path):
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    action = _start_move(table)
+
+    doc.addTask("smarc-wait", "pause")
+
+    assert not action.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis_app, tmp_path: Path):
+    from qgis.core import QgsPointXY
+
+    from src.mission.MissionMapManager import PickInitialWaypointTool
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    action = _start_move(table)
+
+    doc.addTask("move-to", "here")
+
+    assert not action.isChecked()
+    assert isinstance(canvas.mapTool(), PickInitialWaypointTool)
+    doc.parent().mapManager.onPickInitialWaypointToolMapClicked(QgsPointXY(18.1, 59.5), Qt.LeftButton)
+    assert doc.plan.tasks[-1].description == "here"
+    assert not action.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def _start_add(table: WaypointTableWidget) -> QAction:
+    add = table.ui.buttonAddWaypoint.defaultAction()
+    add.setChecked(True)
+    return add
+
+
+def test_selecting_another_path_stops_add_waypoint(qgis_app, tmp_path: Path):
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    add = _start_add(table)
+    assert canvas.mapTool() is not users_tool
+    root = widget.taskListModel.index(0, 0)
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(1, 0, root))
+
+    # Left on, the next click would add a waypoint to the path no longer shown.
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_selecting_another_move_to_stops_select_location(qgis_app, tmp_path: Path):
+    from src.ui.widgets.WaypointFormWidget import WaypointFormWidget
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    root = widget.taskListModel.index(0, 0)
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
+    form = widget.taskEditors["move-to"].findChild(WaypointFormWidget)
+    selectLocation = form.ui.buttonSelectLocation.defaultAction()
+    selectLocation.setChecked(True)
+    assert canvas.mapTool() is not users_tool
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(3, 0, root))
+
+    assert not selectLocation.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_leaving_edit_mode_stops_add_waypoint_and_select_location(qgis_app, tmp_path: Path):
+    from src.ui.widgets.WaypointFormWidget import WaypointFormWidget
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    add = _start_add(table)
+    form = widget.taskEditors["move-to"].findChild(WaypointFormWidget)
+
+    doc.stopEditing(False)
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+
+    doc.startEditing()
+    root = widget.taskListModel.index(0, 0)
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
+    selectLocation = form.ui.buttonSelectLocation.defaultAction()
+    selectLocation.setChecked(True)
+    doc.stopEditing(False)
+    assert not selectLocation.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_stopping_a_tool_after_the_users_tool_was_deleted_leaves_the_canvas_empty(qgis_app, tmp_path: Path):
+    from qgis.core import QgsPointXY
+
+    from qgis.PyQt import sip
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    move = _start_move(table)
+    sip.delete(users_tool)
+
+    # Right-click, called directly: an error raised inside a Qt slot would only be printed.
+    doc.parent().mapManager.onSelectLocationToolMapClicked(QgsPointXY(18.0, 59.0), Qt.RightButton)
+
+    assert not move.isChecked()
+    assert canvas.mapTool() is None
+
+
+def test_adding_a_path_while_add_waypoint_is_on_puts_the_next_waypoints_in_the_new_path(qgis_app, tmp_path: Path):
+    """Clemens's #120: after adding a path, map clicks still added waypoints to the previous one."""
+    from qgis.core import QgsPointXY
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    first = doc.plan.leaves()[0]
+    first_count = len(first.waypoints)
+    add = _start_add(table)
+
+    doc.addTask("move-path", "new path")
+    qgis_app.processEvents()
+
+    # The old path's tool is off, so a click does not edit the old path.
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+    # The editor now shows the new path; its Add Waypoint adds there.
+    new_path = doc.plan.leaves()[-1]
+    assert new_path.description == "new path"
+    _start_add(table)
+    doc.parent().mapManager.onAddWaypointToolMapClicked(QgsPointXY(18.1, 59.5), Qt.LeftButton)
+    assert len(first.waypoints) == first_count
+    assert len(new_path.waypoints) == 1

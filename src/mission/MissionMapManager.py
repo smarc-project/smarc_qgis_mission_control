@@ -10,6 +10,7 @@ from qgis.core import (
 from qgis.gui import QgsMapCanvas, QgsMapMouseEvent, QgsMapTool, QgsRubberBand
 from qgis.utils import iface
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QAction
@@ -152,7 +153,8 @@ class MissionMapManager(QObject):
         super().__init__(parent)
 
         self._canvas = iface.mapCanvas()
-        self._previousTool = self._canvas.mapTool()
+        # The user's own tool (pan, identify, ...) to go back to when a plugin tool stops.
+        self._previousTool: QgsMapTool | None = self._canvas.mapTool()
 
         self._selectLocationTool = SelectLocationMapTool(self._canvas)
         self._selectLocationTool.mapClicked.connect(
@@ -169,12 +171,39 @@ class MissionMapManager(QObject):
             self.onAddWaypointToolMapClicked
         )
 
+        self._pluginTools: tuple[QgsMapTool, ...] = (
+            self._selectLocationTool,
+            self._pickInitialWaypointTool,
+            self._addWaypointTool,
+        )
+
+    def _startMapTool(self, tool: QgsMapTool, action: QAction | None) -> None:
+        """Put one of the plugin's tools on the canvas, after any configure()."""
+        current = self._canvas.mapTool()
+        if current not in self._pluginTools:
+            self._previousTool = current
+        elif current is not tool:
+            # Take the canvas off the outgoing plugin tool before its deactivate()
+            # unchecks its button. The stop that button sends then finds the canvas
+            # no longer on that tool and leaves it alone.
+            self._canvas.unsetMapTool(current)
+        tool.setAction(action)
+        self._canvas.setMapTool(tool)
+
+    def _stopMapTool(self, tool: QgsMapTool) -> None:
+        """Give the canvas back to the user's tool, if it is still on this plugin tool."""
+        if self._canvas.mapTool() is tool:
+            # Unset first, so the stop that deactivate() sends through the button is a no-op.
+            self._canvas.unsetMapTool(tool)
+            # The user's tool may be gone by now, e.g. a plugin that made it was unloaded.
+            if self._previousTool is not None and not sip.isdeleted(self._previousTool):
+                self._canvas.setMapTool(self._previousTool)
+        tool.setAction(None)
+
     # Map Tools
     def onAddWaypointToolMapClicked(self, point: QgsPointXY, button: Qt.MouseButton):
         if button == Qt.MouseButton.RightButton:
-            # Disable tool
-            self._canvas.setMapTool(self._previousTool)
-            self._addWaypointTool.setAction(None)
+            self._stopMapTool(self._addWaypointTool)
         elif button == Qt.MouseButton.LeftButton:
             # Add a new feature!
             doc = self.parent().activeDocument()
@@ -199,9 +228,7 @@ class MissionMapManager(QObject):
     def onSelectLocationToolMapClicked(self, point: QgsPointXY,
                                        button: Qt.MouseButton) -> None:
         if button == Qt.MouseButton.RightButton:
-            # Disable selection tool
-            self._canvas.setMapTool(self._previousTool)
-            self._selectLocationTool.setAction(None)
+            self._stopMapTool(self._selectLocationTool)
         elif button == Qt.MouseButton.LeftButton:
             # Move the current waypoint
             waypointUuid = self._selectLocationTool.waypointUuid()
@@ -216,19 +243,18 @@ class MissionMapManager(QObject):
             doc.setWaypointPosition(waypointUuid, point.y(), point.x())
 
     def pickInitialWaypoint(self, pendingTask: PendingWaypointTask) -> None:
-        self._previousTool = self._canvas.mapTool()
         config = PickInitialWaypointTool.Configuration(
             pendingTask = pendingTask
         )
         self._pickInitialWaypointTool.configure(config)
-        self._canvas.setMapTool(self._pickInitialWaypointTool)
+        self._startMapTool(self._pickInitialWaypointTool, None)
 
     @pyqtSlot(QgsPointXY, Qt.MouseButton)
     def onPickInitialWaypointToolMapClicked(self, point: QgsPointXY,
                                             button: Qt.MouseButton) -> None:
         if button == Qt.MouseButton.RightButton:
             # Disable the tool. No task will be created
-            self._canvas.setMapTool(self._previousTool)
+            self._stopMapTool(self._pickInitialWaypointTool)
         elif button == Qt.MouseButton.LeftButton:
             # Add a new feature!
             pendingTask = self._pickInitialWaypointTool.pendingTask()
@@ -238,15 +264,13 @@ class MissionMapManager(QObject):
             self.initialWaypointPicked.emit(pendingTask, point)
 
             # Done picking initial waypoint
-            self._canvas.setMapTool(self._previousTool)
+            self._stopMapTool(self._pickInitialWaypointTool)
 
     # Model -> Layer
     @pyqtSlot(QAction, UUID, bool)
     def onSelectLocationRequested(self, action: QAction, waypointUuid: UUID,
                                   active: bool) -> None:
         if active:
-            self._previousTool = self._canvas.mapTool()
-            self._selectLocationTool.setAction(action)
             config = SelectLocationMapTool.Configuration(
                 waypointUuid = waypointUuid,
                 # TODO: figure out these points, diff colors too
@@ -254,18 +278,14 @@ class MissionMapManager(QObject):
                 anchorAfter = None,
             )
             self._selectLocationTool.configure(config)
-            self._canvas.setMapTool(self._selectLocationTool)
+            self._startMapTool(self._selectLocationTool, action)
         else:
-            self._canvas.setMapTool(self._previousTool)
-            self._selectLocationTool.setAction(None)
+            self._stopMapTool(self._selectLocationTool)
 
     @pyqtSlot(QAction, int, UUID, str, bool)
     def onAddWaypointRequested(self, action: QAction, insertAt: int, taskUuid: UUID,
                                fieldName: str, active: bool) -> None:
         if active:
-            self._previousTool = self._canvas.mapTool()
-            self._addWaypointTool.setAction(action)
-
             config = AddWaypointTool.Configuration(
                 insertAt = insertAt,
                 taskUuid = taskUuid,
@@ -275,8 +295,6 @@ class MissionMapManager(QObject):
                 anchorAfter = None,
             )
             self._addWaypointTool.configure(config)
-
-            self._canvas.setMapTool(self._addWaypointTool)
+            self._startMapTool(self._addWaypointTool, action)
         else:
-            self._canvas.setMapTool(self._previousTool)
-            self._addWaypointTool.setAction(None)
+            self._stopMapTool(self._addWaypointTool)

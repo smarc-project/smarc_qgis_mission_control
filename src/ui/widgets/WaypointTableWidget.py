@@ -18,6 +18,7 @@ __all__ = ['WaypointTableWidget']
 class WaypointTableWidget(QWidget):
     _taskCls: Type[Task]
     _model: WaypointListModel
+    _moveWaypointAction: QAction
 
     addWaypointRequested = pyqtSignal(QAction, int, UUID, str, bool)
     selectLocationRequested = pyqtSignal(QAction, UUID, bool)
@@ -29,6 +30,8 @@ class WaypointTableWidget(QWidget):
         self._taskCls = taskCls
         self._fieldName = fieldName
         self._missionContext = missionContext
+        # The waypoint the map tool moves while "Move Waypoint" is pressed.
+        self._movingUuid: UUID | None = None
 
         schema = waypointCls.schema()
         self._model = WaypointListModel(schema, longHeaders = False)
@@ -43,8 +46,6 @@ class WaypointTableWidget(QWidget):
         self.ui.waypointTable.setModel(self._model)
         self.ui.waypointTable.selectionModel().selectionChanged.connect(
             self.onWaypointSelectionChanged)
-        # Ensure correct state for buttons
-        self.onWaypointSelectionChanged(None, None)
 
         # Respect edit mode
         self._missionContext.editModeChanged.connect(
@@ -86,10 +87,18 @@ class WaypointTableWidget(QWidget):
             QgsApplication.getThemeIcon('symbologyRemove.svg')
         )
         self.ui.buttonRemoveWaypoint.clicked.connect(self.onRemoveWaypointClicked)
-        # Button "Move Waypoint"
-        self.ui.buttonMoveWaypoint.setIcon(
-            QgsApplication.getThemeIcon('mActionPanTo.svg')
+        # Button "Move Waypoint": the next map click moves the selected waypoint there.
+        self._moveWaypointAction = moveWaypointAction = QAction(
+            QgsApplication.getThemeIcon('mActionPanTo.svg'),
+            "Move Waypoint"
         )
+        moveWaypointAction.setCheckable(True)
+        moveWaypointAction.setToolTip(
+            "Click on the map to move the selected waypoint there. Right-click to stop.")
+        moveWaypointAction.toggled.connect(self.onSelectLocationToggled)
+        # The button takes its enabled state from this action, so the action is what gets disabled.
+        moveWaypointAction.setEnabled(False)
+        self.ui.buttonMoveWaypoint.setDefaultAction(moveWaypointAction)
         # Button "Move Up"
         self.ui.buttonMoveWaypointUp.setIcon(
             QgsApplication.getThemeIcon('mActionArrowUp.svg')
@@ -99,10 +108,17 @@ class WaypointTableWidget(QWidget):
             QgsApplication.getThemeIcon('mActionArrowDown.svg')
         )
 
-    def bind(self, doc: MissionDocument, taskUuid: UUID):
+        # Ensure correct state for buttons
+        self.onWaypointSelectionChanged(None, None)
+
+    def bind(self, doc: MissionDocument, taskUuid: UUID) -> None:
+        # The map tools work on the task bound before. A model reset also clears the
+        # selection without selectionChanged, so they stop here.
+        self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
 
-    def unbind(self):
+    def unbind(self) -> None:
+        self._stopMapTools()
         self._model.unbind()
 
     @pyqtSlot(QItemSelection, QItemSelection)
@@ -113,7 +129,11 @@ class WaypointTableWidget(QWidget):
 
         # Enable/disable waypoint table buttons as needed
         self.ui.buttonRemoveWaypoint.setEnabled(bool(rows))
-        self.ui.buttonMoveWaypoint.setEnabled(len(rows) == 1)
+        self._moveWaypointAction.setEnabled(len(rows) == 1)
+        # The tool moves one waypoint. A different selection ends it.
+        if self._movingUuid is not None and (
+                len(rows) != 1 or self._model.item(rows[0].row()).uuid != self._movingUuid):
+            self._moveWaypointAction.setChecked(False)
         # TODO
         # self.ui.buttonMoveWaypointUp.setEnabled(bool(rows) and rows[0].row() > 0)
         # self.ui.buttonMoveWaypointDown.setEnabled(bool(rows) \
@@ -130,7 +150,9 @@ class WaypointTableWidget(QWidget):
         self.ui.waypointTable.closeEditor(editor, QAbstractItemDelegate.NoHint)
 
     @pyqtSlot(bool)
-    def onEditModeChanged(self, editMode: bool):
+    def onEditModeChanged(self, editMode: bool) -> None:
+        if not editMode:
+            self._stopMapTools()
         self._model.setEditable(editMode)
         self.ui.waypointTableSideBar.setEnabled(editMode)
         self.ui.waypointTable.setEnabled(editMode)
@@ -154,9 +176,20 @@ class WaypointTableWidget(QWidget):
 
     @pyqtSlot(bool)
     def onSelectLocationToggled(self, state: bool):
-        self.selectLocationRequested.emit(
-            self.ui.buttonMoveWaypoint.defaultAction(),
-            # TODO: not index 0, check selection
-            self._model.item(0).uuid,
-            state
-        )
+        action = self._moveWaypointAction
+        if not state:
+            if self._movingUuid is not None:
+                uuid, self._movingUuid = self._movingUuid, None
+                self.selectLocationRequested.emit(action, uuid, False)
+            return
+        rows = self.ui.waypointTable.selectionModel().selectedRows()
+        if len(rows) != 1:
+            action.setChecked(False)
+            return
+        self._movingUuid = self._model.item(rows[0].row()).uuid
+        self.selectLocationRequested.emit(action, self._movingUuid, True)
+
+    def _stopMapTools(self) -> None:
+        # Unchecking a button stops its tool through its toggled slot.
+        for action in (self.ui.buttonAddWaypoint.defaultAction(), self._moveWaypointAction):
+            action.setChecked(False)
