@@ -112,12 +112,13 @@ class WaypointTableWidget(QWidget):
         self.onWaypointSelectionChanged(None, None)
 
     def bind(self, doc: MissionDocument, taskUuid: UUID):
-        # A model reset clears the selection without selectionChanged, so stop here.
-        self._stopMoving()
+        # The map tools work on the task bound before. A model reset also clears the
+        # selection without selectionChanged, so they stop here.
+        self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
 
     def unbind(self):
-        self._stopMoving()
+        self._stopMapTools()
         self._model.unbind()
 
     @pyqtSlot(QItemSelection, QItemSelection)
@@ -132,7 +133,7 @@ class WaypointTableWidget(QWidget):
         # The tool moves one waypoint. A different selection ends it.
         if self._movingUuid is not None and (
                 len(rows) != 1 or self._model.item(rows[0].row()).uuid != self._movingUuid):
-            self._stopMoving()
+            self._moveWaypointAction.setChecked(False)
         # TODO
         # self.ui.buttonMoveWaypointUp.setEnabled(bool(rows) and rows[0].row() > 0)
         # self.ui.buttonMoveWaypointDown.setEnabled(bool(rows) \
@@ -151,7 +152,7 @@ class WaypointTableWidget(QWidget):
     @pyqtSlot(bool)
     def onEditModeChanged(self, editMode: bool):
         if not editMode:
-            self._stopMoving()
+            self._stopMapTools()
         self._model.setEditable(editMode)
         self.ui.waypointTableSideBar.setEnabled(editMode)
         self.ui.waypointTable.setEnabled(editMode)
@@ -188,6 +189,7 @@ class WaypointTableWidget(QWidget):
         self._movingUuid = self._model.item(rows[0].row()).uuid
         self.selectLocationRequested.emit(action, self._movingUuid, True)
 
-    def _stopMoving(self) -> None:
-        if self._moveWaypointAction.isChecked():
-            self._moveWaypointAction.setChecked(False)
+    def _stopMapTools(self) -> None:
+        # Unchecking a button stops its tool through its toggled slot.
+        for action in (self.ui.buttonAddWaypoint.defaultAction(), self._moveWaypointAction):
+            action.setChecked(False)

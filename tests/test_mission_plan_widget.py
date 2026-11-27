@@ -228,14 +228,15 @@ def _path(description: str, latitude: float) -> MovePathTask:
 
 
 def _editing_first_path(qgis_app, tmp_path: Path):
-    """Two paths and a move-to, in edit mode, the first path's editor shown, the user on Pan."""
+    """Two paths and two move-tos, in edit mode, the first path's editor shown, the user on Pan."""
     import qgis.utils
     from qgis.gui import QgsMapToolPan
 
     from src.ui.widgets.WaypointTableWidget import WaypointTableWidget
 
     plan = MissionPlan(name=GroupKind.SEQ.value, description="out",
-                       tasks=[_path("first", 59.30), _path("second", 59.40), _move_to("there")])
+                       tasks=[_path("first", 59.30), _path("second", 59.40),
+                              _move_to("there"), _move_to("there too")])
     widget, doc = _open(plan, tmp_path)
     widget.show()
     doc.startEditing()
@@ -309,4 +310,61 @@ def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis
     doc.parent().mapManager.onPickInitialWaypointToolMapClicked(QgsPointXY(18.1, 59.5), Qt.LeftButton)
     assert doc.plan.tasks[-1].description == "here"
     assert not action.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def _start_add(table):
+    add = table.ui.buttonAddWaypoint.defaultAction()
+    add.setChecked(True)
+    return add
+
+
+def test_selecting_another_path_stops_add_waypoint(qgis_app, tmp_path: Path):
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    add = _start_add(table)
+    assert canvas.mapTool() is not users_tool
+    root = widget.taskListModel.index(0, 0)
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(1, 0, root))
+
+    # Left on, the next click would add a waypoint to the path no longer shown.
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_selecting_another_move_to_stops_select_location(qgis_app, tmp_path: Path):
+    from src.ui.widgets.WaypointFormWidget import WaypointFormWidget
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    root = widget.taskListModel.index(0, 0)
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
+    form = widget.taskEditors["move-to"].findChild(WaypointFormWidget)
+    selectLocation = form.ui.buttonSelectLocation.defaultAction()
+    selectLocation.setChecked(True)
+    assert canvas.mapTool() is not users_tool
+
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(3, 0, root))
+
+    assert not selectLocation.isChecked()
+    assert canvas.mapTool() is users_tool
+
+
+def test_leaving_edit_mode_stops_add_waypoint_and_select_location(qgis_app, tmp_path: Path):
+    from src.ui.widgets.WaypointFormWidget import WaypointFormWidget
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    add = _start_add(table)
+    form = widget.taskEditors["move-to"].findChild(WaypointFormWidget)
+
+    doc.stopEditing(False)
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+
+    doc.startEditing()
+    root = widget.taskListModel.index(0, 0)
+    widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
+    selectLocation = form.ui.buttonSelectLocation.defaultAction()
+    selectLocation.setChecked(True)
+    doc.stopEditing(False)
+    assert not selectLocation.isChecked()
     assert canvas.mapTool() is users_tool
