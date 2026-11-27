@@ -133,7 +133,8 @@ class WaypointTableWidget(QWidget):
         self.onWaypointSelectionChanged(None, None)
 
     def bind(self, doc: MissionDocument, taskUuid: UUID):
-        # A model reset clears the selection without selectionChanged, so stop here.
+        # The map tools work on the task bound before. A model reset also clears the
+        # selection without selectionChanged, so they stop here.
         self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
 
@@ -232,7 +233,7 @@ class WaypointTableWidget(QWidget):
             self._rotateWaypointsAction, self._waypointsToRotate(), state)
 
     def _stopMapTools(self) -> None:
-        if self._moveWaypointAction.isChecked():
-            self._moveWaypointAction.setChecked(False)
-        if self._rotateWaypointsAction.isChecked():
-            self._rotateWaypointsAction.setChecked(False)
+        # Unchecking a button stops its tool through its toggled slot.
+        for action in (self.ui.buttonAddWaypoint.defaultAction(), self._moveWaypointAction,
+                       self._rotateWaypointsAction):
+            action.setChecked(False)
