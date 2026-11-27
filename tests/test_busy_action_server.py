@@ -160,6 +160,16 @@ def test_start_on_busy_server_is_refused_with_the_reason(panel):
     assert panel.widget.ui.uploadMissionPlanButton.isEnabled()
 
 
+def test_a_task_without_a_description_is_named_a_task(panel):
+    panel.receive("tst_execution_info", _executionInfo([GO_TO_DOCK | {"description": ""}]))
+    seen: list[str] = []
+
+    _answerBusyDialog("Cancel", seen)
+    panel.widget.ui.uploadMissionPlanButton.click()
+
+    assert "its move-to server is running a task." in seen[0]
+
+
 def test_override_confirms_aborts_then_starts_when_the_server_is_free(panel):
     _override(panel)
 

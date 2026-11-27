@@ -229,9 +229,11 @@ class FleetControlWidget(QFrame):
             for task in tasks:
                 # "running" would repeat the line; other states (paused, aborted) are news.
                 status = "" if task.status == "running" else f" ({task.status})"
+                # A task started without a description (start-task allows it) is just "a task".
+                what = f"\u201c{task.description}\u201d" if task.description else "a task"
                 lines.append(
                     f"Not sent to {vehicleTopic.split('/')[-1]}: its {task.type} server "
-                    f"is running \u201c{task.description}\u201d{status}."
+                    f"is running {what}{status}."
                 )
         if replaced:
             names = ", ".join(sorted(t.split('/')[-1] for t in replaced))
