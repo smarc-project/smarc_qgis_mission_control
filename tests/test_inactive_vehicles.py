@@ -31,7 +31,7 @@ class _MapManager:
 
 
 @pytest.fixture
-def fleet(qgis_app):
+def fleetState(qgis_app):
     mqtt = MqttService(None)
     clock = _Clock()
     state = FleetState(mqtt, None, clock=clock)
@@ -54,88 +54,88 @@ def _sweep():
     QTest.qWait(INACTIVE_CHECK_INTERVAL + 200)
 
 
-def test_silent_vehicle_expires_once_and_returns_when_heard(fleet):
-    expired = QSignalSpy(fleet.state.vehicleExpired)
-    returned = QSignalSpy(fleet.state.vehicleReturned)
-    fleet.hear(SAM)
-    fleet.hear(LOLO)
+def test_silent_vehicle_expires_once_and_returns_when_heard(fleetState):
+    expired = QSignalSpy(fleetState.state.vehicleExpired)
+    returned = QSignalSpy(fleetState.state.vehicleReturned)
+    fleetState.hear(SAM)
+    fleetState.hear(LOLO)
 
-    fleet.clock.now += 30
-    fleet.hear(LOLO)
-    fleet.clock.now += 40
+    fleetState.clock.now += 30
+    fleetState.hear(LOLO)
+    fleetState.clock.now += 40
     _sweep()
     _sweep()
 
     assert [list(e) for e in expired] == [[SAM]]
-    assert not fleet.state.isActive(SAM)
-    assert fleet.state.isActive(LOLO)
+    assert not fleetState.state.isActive(SAM)
+    assert fleetState.state.isActive(LOLO)
 
-    fleet.hear(SAM)
+    fleetState.hear(SAM)
     assert [list(r) for r in returned] == [[SAM]]
-    assert fleet.state.isActive(SAM)
+    assert fleetState.state.isActive(SAM)
 
 
-def test_zero_timeout_brings_hidden_vehicles_back_and_hides_none(fleet):
-    fleet.hear(SAM)
-    fleet.clock.now += 100
+def test_zero_timeout_brings_hidden_vehicles_back_and_hides_none(fleetState):
+    fleetState.hear(SAM)
+    fleetState.clock.now += 100
     _sweep()
-    assert not fleet.state.isActive(SAM)
+    assert not fleetState.state.isActive(SAM)
 
-    fleet.state.setInactiveTimeout(0)
-    fleet.clock.now += 1000
+    fleetState.state.setInactiveTimeout(0)
+    fleetState.clock.now += 1000
     _sweep()
 
-    assert fleet.state.isActive(SAM)
+    assert fleetState.state.isActive(SAM)
 
 
-def test_relayed_sensors_keep_a_silent_vehicle_active(fleet):
+def test_relayed_sensors_keep_a_silent_vehicle_active(fleetState):
     # Underwater: no heartbeat of its own, surface units fill in its depth.
-    fleet.hear(LOLO)
+    fleetState.hear(LOLO)
     for _ in range(4):
-        fleet.clock.now += 30
-        fleet.relay(LOLO, "depth", b"12.5")
+        fleetState.clock.now += 30
+        fleetState.relay(LOLO, "depth", b"12.5")
         _sweep()
 
-    assert fleet.state.isActive(LOLO)
+    assert fleetState.state.isActive(LOLO)
 
-    fleet.clock.now += 61
+    fleetState.clock.now += 61
     _sweep()
-    assert not fleet.state.isActive(LOLO)
+    assert not fleetState.state.isActive(LOLO)
 
 
-def test_commands_sent_to_a_silent_vehicle_do_not_keep_it_active(fleet):
-    fleet.hear(LOLO)
+def test_commands_sent_to_a_silent_vehicle_do_not_keep_it_active(fleetState):
+    fleetState.hear(LOLO)
     for _ in range(4):
-        fleet.clock.now += 30
-        fleet.receive(LOLO, "tst/command", b"{}")
-        fleet.receive(LOLO, "exec/command", b"{}")
+        fleetState.clock.now += 30
+        fleetState.receive(LOLO, "tst/command", b"{}")
+        fleetState.receive(LOLO, "exec/command", b"{}")
 
     _sweep()
-    assert not fleet.state.isActive(LOLO)
+    assert not fleetState.state.isActive(LOLO)
 
 
-def test_raising_the_timeout_brings_back_vehicles_inside_it(fleet):
-    fleet.state.setInactiveTimeout(3)
-    fleet.hear(SAM)
-    fleet.clock.now += 10
+def test_raising_the_timeout_brings_back_vehicles_inside_it(fleetState):
+    fleetState.state.setInactiveTimeout(3)
+    fleetState.hear(SAM)
+    fleetState.clock.now += 10
     _sweep()
-    assert not fleet.state.isActive(SAM)
+    assert not fleetState.state.isActive(SAM)
 
-    fleet.state.setInactiveTimeout(60)
+    fleetState.state.setInactiveTimeout(60)
 
-    assert fleet.state.isActive(SAM)
+    assert fleetState.state.isActive(SAM)
 
 
-def test_fleet_control_hides_and_deselects_a_silent_vehicle(fleet):
-    panel = FleetControlWidget(fleet.state, _MapManager())
-    fleet.hear(SAM)
-    fleet.hear(LOLO)
+def test_fleet_control_hides_and_deselects_a_silent_vehicle(fleetState):
+    panel = FleetControlWidget(fleetState.state, _MapManager())
+    fleetState.hear(SAM)
+    fleetState.hear(LOLO)
     panel.selectAll()
     uploads = QSignalSpy(panel.uploadMissionPlanRequested)
 
-    fleet.clock.now += 50
-    fleet.hear(LOLO)
-    fleet.clock.now += 20
+    fleetState.clock.now += 50
+    fleetState.hear(LOLO)
+    fleetState.clock.now += 20
     _sweep()
 
     layout = panel.ui.vehicleListVLayout
@@ -147,18 +147,18 @@ def test_fleet_control_hides_and_deselects_a_silent_vehicle(fleet):
     panel.ui.uploadMissionPlanButton.click()
     assert list(uploads[0]) == [{LOLO}]
 
-    fleet.hear(SAM)
+    fleetState.hear(SAM)
     assert not cards[SAM].isHidden() and not cards[SAM].isChecked()
     assert panel.ui.vehiclesSelectedLabel.text() == "1 vehicle selected"
 
 
-def test_live_view_hides_the_row_but_keeps_it_on_the_map(fleet):
-    panel = LiveViewWidget(SimpleNamespace(state=fleet.state, mapManager=_MapManager()))
-    fleet.hear(SAM)
+def test_live_view_hides_the_row_but_keeps_it_on_the_map(fleetState):
+    panel = LiveViewWidget(SimpleNamespace(state=fleetState.state, mapManager=_MapManager()))
+    fleetState.hear(SAM)
     [row] = panel.findChildren(VehicleLiveViewWidget)
     row.setChecked(True)
 
-    fleet.clock.now += 61
+    fleetState.clock.now += 61
     _sweep()
 
     assert row.isHidden()
@@ -172,5 +172,5 @@ def test_live_view_hides_the_row_but_keeps_it_on_the_map(fleet):
     assert [list(e) for e in shownOnMap] == [[SAM, False]]
     assert not panel.ui.deselectAllButton.isEnabled()
 
-    fleet.hear(SAM)
+    fleetState.hear(SAM)
     assert not row.isHidden()
