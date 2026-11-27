@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from ..compat import StrEnum
 from .jsoncodec import JsonCodec
 from .schema import Column, SchemaMixin, Unit
-from .waypoints import AUVWaypoint, GeoPoint, Waypoint
+from .waypoints import AUVWaypoint, GeoArea, GeoPoint, Waypoint
 
 __all__ = [
     "Task",
@@ -186,7 +186,9 @@ class SmarcStartGeofenceTask(Task):
         = 1.0
     stay_inside: Annotated[bool, Column("StayInside")] \
         = True
-    waypoints: Annotated[list[GeoPoint], Column("Waypoints")] \
+    #: The fence polygon. The JSON key stays "waypoints", which the geofence server
+    #: reads and which older mission files carry.
+    waypoints: Annotated[GeoArea, Column("Area")] \
         = field(default_factory = list)
 
 @task("smarc-stop-geofence")

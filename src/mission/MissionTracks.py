@@ -30,7 +30,7 @@ from qgis.PyQt.QtCore import QObject, QSizeF, Qt, QVariant, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.missionplan import MissionPlan
-from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.taskspatial import iterTaskRouteWaypoints, taskFieldIsArea
 from ..domain.waypoints import Waypoint
 
 if TYPE_CHECKING:
@@ -259,9 +259,9 @@ class MissionTracks(QObject):
         self._layer.dataProvider().truncate()
 
         data = []
-        # Discover all the waypoints and their tasks
+        # Discover the route waypoints and their tasks. Area corners belong to MissionAreas.
         for task in plan.leaves():
-            for waypoint in iterTaskWaypoints(task):
+            for waypoint in iterTaskRouteWaypoints(task):
                 data.append((waypoint, task.uuid))
 
         # Build initial features
@@ -276,6 +276,10 @@ class MissionTracks(QObject):
 
         if features:
             self._layer.dataProvider().addFeatures(features)
+
+    def _isAreaField(self, taskUuid: UUID, fieldName: str) -> bool:
+        task = self._doc.index.taskByUuid(taskUuid)
+        return task is not None and taskFieldIsArea(task, fieldName)
 
     def createLineFeature(self, fromWaypoint: Waypoint, toWaypoint: Waypoint,
                           sameTask: bool) -> QgsFeature:
@@ -314,6 +318,9 @@ class MissionTracks(QObject):
     @pyqtSlot(UUID, str, UUID)
     def onWaypointAdded(self, taskUuid: UUID, fieldName: str,
                         waypointUuid: UUID) -> None:
+        if self._isAreaField(taskUuid, fieldName):
+            # An area corner is not on the route, so no segment changes
+            return
         waypoint = self._doc.index.waypointByUuid(waypointUuid)
         if waypoint is None:
             # TODO: invalid mapping
@@ -366,6 +373,9 @@ class MissionTracks(QObject):
     @pyqtSlot(UUID, str, UUID, int)
     def onBeforeWaypointDeleted(self, taskUuid: UUID, fieldName: str,
                                 waypointUuid: UUID, index: int) -> None:
+        if self._isAreaField(taskUuid, fieldName):
+            # An area corner is not on the route, so no segment changes
+            return
         waypoint = self._doc.index.waypointByUuid(waypointUuid)
         if waypoint is None:
             # TODO: invalid mapping
@@ -437,7 +447,7 @@ class MissionTracks(QObject):
             # TODO: invalid mapping
             return
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
         if len(waypoints) == 0:
             # No waypoints on this task
             return
@@ -500,7 +510,7 @@ class MissionTracks(QObject):
             # TODO: invalid mapping
             return
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
         if len(waypoints) == 0:
             # No waypoints on this task
             return

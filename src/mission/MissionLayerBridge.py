@@ -31,6 +31,7 @@ from ..domain.missionplan import MissionPlan
 from ..domain.tasks import Task
 from ..domain.taskspatial import iterTaskWaypoints
 from ..domain.waypoints import Waypoint
+from .MissionAreas import MissionAreas
 from .MissionTracks import MissionTracks
 
 __all__ = ["MissionLayerBridge"]
@@ -82,6 +83,7 @@ class MissionLayerBridge(QObject):
     _layerGroup: QgsLayerTreeGroup
     waypointLayer: QgsVectorLayer
     tracks: MissionTracks
+    areas: MissionAreas
 
     def __init__(self, plan: MissionPlan, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -262,6 +264,7 @@ class MissionLayerBridge(QObject):
 
         # Setup the tracks layer
         self.tracks = MissionTracks(self.parent(), self._layerGroup, self)
+        self.areas = MissionAreas(self.parent(), self._layerGroup, self)
 
     def _populateLayers(self, plan: MissionPlan) -> None:
         for task in plan.leaves():
@@ -475,12 +478,12 @@ class MissionLayerBridge(QObject):
         else:
             qgs.removeMapLayer(layerId)
 
-        try:
-            layerId = self.tracks._layer.id()
-        except RuntimeError:
-            # Layer may have been removed externally, e.g. during QGIS shutdown
-            pass
-        else:
+        for layer in (self.tracks._layer, self.areas.layer()):
+            try:
+                layerId = layer.id()
+            except RuntimeError:
+                # Layer may have been removed externally, e.g. during QGIS shutdown
+                continue
             qgs.removeMapLayer(layerId)
 
         if sip.isdeleted(self._layerGroup):

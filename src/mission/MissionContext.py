@@ -117,6 +117,7 @@ class MissionContext(QObject):
             active = otherUuid == planUuid
             otherDoc.layerBridge.setActive(active)
             otherDoc.layerBridge.tracks.setActive(otherUuid == planUuid)
+            otherDoc.layerBridge.areas.setActive(active)
 
         self.activeMissionChanged.emit(doc)
 
@@ -145,6 +146,7 @@ class MissionContext(QObject):
 
         doc.layerBridge.waypointLayer.triggerRepaint()
         doc.layerBridge.tracks._layer.triggerRepaint()
+        doc.layerBridge.areas.layer().triggerRepaint()
 
     @pyqtSlot(PendingWaypointTask, QgsPointXY)
     # TODO: should this be here?

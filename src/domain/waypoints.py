@@ -3,9 +3,9 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from .jsoncodec import JsonCodec
-from .schema import Column, SchemaMixin, Unit
+from .schema import Area, Column, SchemaMixin, Unit
 
-__all__ = ["Waypoint", "AUVWaypoint", "GeoPoint"]
+__all__ = ["Waypoint", "AUVWaypoint", "GeoPoint", "GeoArea"]
 
 
 @dataclass
@@ -78,3 +78,9 @@ class GeoPoint(Waypoint):
         if data.get("rostype") != "GeoPoint":
             raise ValueError(f"Non-GeoPoint data passed to {cls.__name__}")
         return JsonCodec.decodeSchema(cls, data)
+
+
+#: The corners of a closed area, in order. On the wire it is the WARA-PS `GeoPoints`
+#: list that `set-geofence` and `add-no-go-zone` take as `area`, so only the map
+#: draws it differently from a route.
+GeoArea = Annotated[list[GeoPoint], Area()]
