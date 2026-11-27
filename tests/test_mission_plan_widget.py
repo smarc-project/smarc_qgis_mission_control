@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, pyqtBoundSignal
 
 from src.domain.missionplan import GroupKind, MissionPlan, TaskGroup
 from src.domain.tasks import MovePathTask
@@ -120,7 +120,7 @@ def test_a_map_click_task_lands_in_the_selected_group(qgis_app, tmp_path: Path):
         description="there",
         taskUuid=uuid4(),
         waypointUuid=uuid4(),
-        parentUuid=group.uuid,
+        ownerUuid=group.uuid,
     )
     doc.addPendingWaypointTask(pending, QgsPointXY(18.07, 59.35))
     assert doc.plan.tasks[0].children[0].description == "there"
@@ -216,3 +216,71 @@ def test_renaming_a_task_in_the_tree_keeps_the_tree_open(qgis_app, tmp_path: Pat
     assert doc.plan.tasks[0].children[0].description == "port"
     assert widget.ui.taskList.isExpanded(group)
     assert model.node(widget.ui.taskList.currentIndex()).description == "port"
+
+
+def _record(signal: pyqtBoundSignal) -> list[tuple]:
+    emitted: list[tuple] = []
+    signal.connect(lambda *args: emitted.append(args))
+    return emitted
+
+
+def test_a_group_has_its_own_signals_and_task_signals_carry_only_tasks(qgis_app, tmp_path: Path):
+    left, right = _move_to("left"), _move_to("right")
+    together = TaskGroup(kind=GroupKind.CONC, description="together", children=[left, right])
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="out", tasks=[together])
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+    doc.startEditing()
+    stack = doc.layerBridge.waypointLayer.undoStack()
+    tasksAdded = _record(doc.taskAdded)
+    tasksDeleted = _record(doc.taskDeleted)
+    groupsAdded = _record(doc.groupAdded)
+    groupsDeleted = _record(doc.groupDeleted)
+
+    added = doc.addGroup(GroupKind.SEQ)
+    assert groupsAdded == [(added.uuid, 1)]
+    assert tasksAdded == []
+
+    doc.deleteGroup(together)
+    assert groupsDeleted == [(together.uuid, 0)]
+    assert [uuid for uuid, _ in tasksDeleted] == [right.uuid, left.uuid]
+
+    # Undo re-adds the children through the task path, then the group itself.
+    stack.undo()
+    assert groupsAdded[-1] == (together.uuid, 0)
+    assert [uuid for uuid, _ in tasksAdded] == [left.uuid, right.uuid]
+
+
+def test_the_tree_selects_a_new_group_and_drops_a_deleted_one(qgis_app, tmp_path: Path):
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="out", tasks=[_move_to("first")])
+    widget, doc = _open(plan, tmp_path)
+    widget.show()
+    doc.startEditing()
+    qgis_app.processEvents()
+    model = widget.taskListModel
+    # The plan row is not a group, so the new group lands at the top level.
+    widget.ui.taskList.setCurrentIndex(model.index(0, 0))
+
+    widget.onAddGroup(GroupKind.CONC)
+    qgis_app.processEvents()
+    added = doc.plan.tasks[1]
+    assert isinstance(added, TaskGroup)
+    assert model.node(widget.ui.taskList.currentIndex()) is added
+    assert model.rowCount(model.index(0, 0)) == 2
+
+    doc.deleteGroup(added)
+    qgis_app.processEvents()
+    assert model.rowCount(model.index(0, 0)) == 1
+    assert model.node(model.index(0, 0, model.index(0, 0))).description == "first"
+
+
+def test_the_plan_finds_any_node_but_only_groups_as_groups(qgis_app):
+    left = _move_to("left")
+    together = TaskGroup(kind=GroupKind.CONC, description="together", children=[left])
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="out", tasks=[together])
+
+    assert plan.findNode(left.uuid) is left
+    assert plan.findNode(together.uuid) is together
+    assert plan.findGroup(together.uuid) is together
+    # A task is not a group, and None names the root.
+    assert plan.findGroup(left.uuid) is None
+    assert plan.findGroup(None) is None

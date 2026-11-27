@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from .schema import Column, SchemaMixin, Unit
 from .tasks import Task, TaskRegistry
 
-__all__ = ["GroupKind", "MissionPlan", "TaskGroup"]
+__all__ = ["GroupKind", "MissionNode", "MissionPlan", "TaskGroup"]
 
 
 class GroupKind(str, Enum):
@@ -28,7 +28,7 @@ class TaskGroup:
     kind: GroupKind
     description: str
     uuid: UUID = field(default_factory=uuid4)
-    children: list = field(default_factory=list)
+    children: list["MissionNode"] = field(default_factory=list)
     stop_on_first: bool = False
 
     @property
@@ -36,7 +36,11 @@ class TaskGroup:
         return self.kind.value
 
 
-def node_from_json(data: dict[str, Any]) -> Task | TaskGroup:
+# One node of the mission tree: a task leaf or a group of more nodes.
+MissionNode = Task | TaskGroup
+
+
+def node_from_json(data: dict[str, Any]) -> MissionNode:
     name = data.get("name")
     if name in GroupKind._value2member_map_:
         kind = GroupKind(name)
@@ -52,7 +56,7 @@ def node_from_json(data: dict[str, Any]) -> Task | TaskGroup:
     return TaskRegistry.taskFromJson(data)
 
 
-def node_to_json(node: Task | TaskGroup) -> dict[str, Any]:
+def node_to_json(node: MissionNode) -> dict[str, Any]:
     if isinstance(node, TaskGroup):
         params: dict[str, Any] = {}
         if node.kind is GroupKind.CONC and node.stop_on_first:
@@ -67,7 +71,8 @@ def node_to_json(node: Task | TaskGroup) -> dict[str, Any]:
     return node.toJson()
 
 
-def walk(nodes: list, owner: TaskGroup | None = None) -> Iterator[tuple[TaskGroup | None, int, Any]]:
+def walk(nodes: list[MissionNode],
+         owner: TaskGroup | None = None) -> Iterator[tuple[TaskGroup | None, int, MissionNode]]:
     """Every node under nodes, depth first, as (owning group or None, row, node)."""
     for row, node in enumerate(nodes):
         yield owner, row, node
@@ -75,7 +80,7 @@ def walk(nodes: list, owner: TaskGroup | None = None) -> Iterator[tuple[TaskGrou
             yield from walk(node.children, node)
 
 
-def leaves(nodes: list) -> list[Task]:
+def leaves(nodes: list[MissionNode]) -> list[Task]:
     return [node for _, _, node in walk(nodes) if not isinstance(node, TaskGroup)]
 
 
@@ -86,7 +91,7 @@ class MissionPlan(SchemaMixin):
     description : Annotated[str, Column('Description')]
     uuid        : UUID = field(default_factory=uuid4)
     timeout     : Annotated[float, Column('Timeout'), Unit('s')] = 300.0
-    tasks       : list = field(default_factory=list)
+    tasks       : list[MissionNode] = field(default_factory=list)
     # fmt: on
 
     @property
@@ -96,23 +101,28 @@ class MissionPlan(SchemaMixin):
             return GroupKind(self.name)
         return GroupKind.SEQ
 
-    def children_of(self, group: TaskGroup | None) -> list:
+    def children_of(self, group: TaskGroup | None) -> list[MissionNode]:
         return self.tasks if group is None else group.children
 
     def leaves(self) -> list[Task]:
         return leaves(self.tasks)
 
-    def empty_groups(self) -> list[TaskGroup]:
+    def emptyGroups(self) -> list[TaskGroup]:
         """Groups with no children, at any depth. The officer refuses a TST that has one."""
         return [node for _, _, node in walk(self.tasks) if isinstance(node, TaskGroup) and not node.children]
 
-    def find_group(self, group_uuid: UUID | None) -> TaskGroup | None:
+    def findNode(self, uuid: UUID) -> MissionNode | None:
         for _, _, node in walk(self.tasks):
-            if isinstance(node, TaskGroup) and node.uuid == group_uuid:
+            if node.uuid == uuid:
                 return node
         return None
 
-    def locate(self, target) -> tuple[TaskGroup | None, int] | None:
+    def findGroup(self, groupUuid: UUID | None) -> TaskGroup | None:
+        # None stands for the plan's root, which is not a group.
+        node = None if groupUuid is None else self.findNode(groupUuid)
+        return node if isinstance(node, TaskGroup) else None
+
+    def locate(self, target: MissionNode) -> tuple[TaskGroup | None, int] | None:
         """Return (owning group or None for the root, row), or None if target is not in the plan."""
         for owner, row, node in walk(self.tasks):
             if node is target:

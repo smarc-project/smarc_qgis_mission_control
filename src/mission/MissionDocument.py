@@ -7,7 +7,7 @@ from qgis.core import QgsPointXY
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
-from ..domain.missionplan import GroupKind, MissionPlan, TaskGroup, leaves
+from ..domain.missionplan import GroupKind, MissionNode, MissionPlan, TaskGroup, leaves
 from ..domain.tasks import (
     PendingWaypointTask,
     Task,
@@ -55,6 +55,10 @@ class MissionDocument(QObject):
     taskDeleted = pyqtSignal(UUID, int)
     # TODO: not very precise
     taskChanged = pyqtSignal(UUID)
+
+    # A group's own add and delete. The task signals above carry only tasks.
+    groupAdded = pyqtSignal(UUID, int)
+    groupDeleted = pyqtSignal(UUID, int)
 
     beforeWaypointAdded = pyqtSignal(UUID, str, UUID, int)
     waypointAdded = pyqtSignal(UUID, str, UUID)
@@ -125,9 +129,9 @@ class MissionDocument(QObject):
         self.plan.schema().fields[fieldId].setValue(self.plan, value)
         self.missionChanged.emit()
 
-    def addGroup(self, kind: GroupKind, parent: TaskGroup | None = None) -> TaskGroup:
+    def addGroup(self, kind: GroupKind, owner: TaskGroup | None = None) -> TaskGroup:
         group = TaskGroup(kind=kind, description=kind.label)
-        cmd = AddGroupUndoCommand(self, group, parent)
+        cmd = AddGroupUndoCommand(self, group, owner)
         with self.layerBridge.customEditCommand(f"Add {kind.label.lower()}"):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
@@ -148,19 +152,19 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _addGroupAt(self, group: TaskGroup, index: int, parent_uuid: UUID | None = None) -> None:
+    def _addGroupAt(self, group: TaskGroup, index: int, ownerUuid: UUID | None = None) -> None:
         # One leaf at a time through the task path, so the tracks link each leaf to its neighbours.
         children, group.children = group.children, []
-        self._container(parent_uuid).insert(index, group)
+        self._container(ownerUuid).insert(index, group)
         for row, child in enumerate(children):
             if isinstance(child, TaskGroup):
                 self._addGroupAt(child, row, group.uuid)
             else:
                 self._addTaskAt(child, row, group.uuid)
-        self.taskAdded.emit(group.uuid, index)
+        self.groupAdded.emit(group.uuid, index)
 
-    def _deleteGroupAt(self, index: int, parent_uuid: UUID | None = None) -> None:
-        container = self._container(parent_uuid)
+    def _deleteGroupAt(self, index: int, ownerUuid: UUID | None = None) -> None:
+        container = self._container(ownerUuid)
         group = container[index]
         children = list(group.children)
         for row in reversed(range(len(children))):
@@ -171,19 +175,19 @@ class MissionDocument(QObject):
         container.pop(index)
         # The undo command holds this group. It gets its children back for the re-add.
         group.children = children
-        self.taskDeleted.emit(group.uuid, index)
+        self.groupDeleted.emit(group.uuid, index)
 
     # TODO: accept index in addTask?
     def addTask(self, taskType: str, description: str,
                 taskUuid: UUID | None = None,
-                parent: TaskGroup | None = None) -> None:
+                owner: TaskGroup | None = None) -> None:
         taskCls = TaskRegistry.lookup(taskType)
         requiredFields = taskCls.requiredFields()
 
         if not requiredFields:
             # Task can be added directly
             task = taskCls(description=description, uuid=taskUuid or uuid4())
-            self.addTaskInstance(task, parent)
+            self.addTaskInstance(task, owner)
             return
 
         if len(requiredFields) == 1:
@@ -198,7 +202,7 @@ class MissionDocument(QObject):
                     description = description,
                     taskUuid = taskUuid or uuid4(),
                     waypointUuid = uuid4(),
-                    parentUuid = None if parent is None else parent.uuid,
+                    ownerUuid = None if owner is None else owner.uuid,
                 )
                 # TODO: get mapManager from parent
                 self.parent().mapManager.pickInitialWaypoint(pending)
@@ -222,11 +226,11 @@ class MissionDocument(QObject):
             uuid = pendingTask.taskUuid,
             **{pendingTask.fieldName: waypoint}
         )
-        group = self.plan.find_group(pendingTask.parentUuid)
-        self.addTaskInstance(task, group)
+        owner = self.plan.findGroup(pendingTask.ownerUuid)
+        self.addTaskInstance(task, owner)
 
-    def addTaskInstance(self, task: Task, parent: TaskGroup | None = None) -> None:
-        cmd = AddTaskUndoCommand(self, task, parent)
+    def addTaskInstance(self, task: Task, owner: TaskGroup | None = None) -> None:
+        cmd = AddTaskUndoCommand(self, task, owner)
 
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -236,13 +240,13 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _container(self, parent_uuid: UUID | None) -> list:
-        return self.plan.children_of(self.plan.find_group(parent_uuid))
+    def _container(self, ownerUuid: UUID | None) -> list[MissionNode]:
+        return self.plan.children_of(self.plan.findGroup(ownerUuid))
 
-    def _addTaskAt(self, task: Task, index: int, parent_uuid: UUID | None = None):
+    def _addTaskAt(self, task: Task, index: int, ownerUuid: UUID | None = None) -> None:
         self.beforeTaskAdded.emit(task.uuid, index)
 
-        self._container(parent_uuid).insert(index, task)
+        self._container(ownerUuid).insert(index, task)
         self.index.registerTask(task)
 
         self.taskAdded.emit(task.uuid, index)
@@ -262,8 +266,8 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _deleteTaskAt(self, index: int, parent_uuid: UUID | None = None):
-        container = self._container(parent_uuid)
+    def _deleteTaskAt(self, index: int, ownerUuid: UUID | None = None) -> None:
+        container = self._container(ownerUuid)
         task = container[index]
 
         # Listeners still need the task in the plan to find its neighbours.

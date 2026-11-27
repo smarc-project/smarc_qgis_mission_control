@@ -3,6 +3,8 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import (
     QItemSelection,
     QItemSelectionModel,
+    QModelIndex,
+    QPoint,
     Qt,
     pyqtSignal,
     pyqtSlot,
@@ -20,7 +22,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
-from ...domain.missionplan import GroupKind, TaskGroup, walk
+from ...domain.missionplan import GroupKind, MissionNode, MissionPlan, TaskGroup, walk
 from ...domain.tasks import Task, TaskRegistry, UnsupportedTaskCreationError
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
@@ -202,7 +204,7 @@ class MissionPlanWidget(QWidget):
         self.taskSelectionChanged.emit([task.uuid for task in tasks])
 
     @pyqtSlot()
-    def onAddTaskClicked(self):
+    def onAddTaskClicked(self) -> None:
         doc = self._document()
         if doc is None:
             # TODO: invalid mapping
@@ -213,7 +215,7 @@ class MissionPlanWidget(QWidget):
             return
 
         try:
-            doc.addTask(dialog.type(), dialog.description(), parent=self._selected_group())
+            doc.addTask(dialog.type(), dialog.description(), owner=self._selected_group())
         except UnsupportedTaskCreationError as error:
             QMessageBox.warning(
                 self,
@@ -223,15 +225,17 @@ class MissionPlanWidget(QWidget):
             )
 
     @pyqtSlot()
-    def onRemoveTaskClicked(self):
+    def onRemoveTaskClicked(self) -> None:
         doc = self._document()
         if doc is None:
             # TODO: invalid mapping
             return
 
         # Selecting a group selects its children. Deleting the group removes them.
-        nodes = [self.taskListModel.node(index)
-                 for index in self.ui.taskList.selectionModel().selectedRows()]
+        nodes: list[MissionNode | MissionPlan | None] = [
+            self.taskListModel.node(index)
+            for index in self.ui.taskList.selectionModel().selectedRows()
+        ]
         groups = [node for node in nodes if isinstance(node, TaskGroup)]
         inside = {id(child) for group in groups for _, _, child in walk(group.children)}
         for node in nodes:
@@ -246,7 +250,7 @@ class MissionPlanWidget(QWidget):
         self.ui.taskList.expandAll()
         self.onTaskSelectionChanged(None, None)
 
-    def _selectIndex(self, index) -> None:
+    def _selectIndex(self, index: QModelIndex) -> None:
         if index.isValid():
             self.ui.taskList.setCurrentIndex(index)
             self.ui.taskList.scrollTo(index)
@@ -254,7 +258,7 @@ class MissionPlanWidget(QWidget):
     def _document(self) -> MissionDocument | None:
         return self._missionContext.activeDocument()
 
-    def _mission_root(self):
+    def _mission_root(self) -> MissionPlan | None:
         doc = self._document()
         return None if doc is None else doc.plan
 
@@ -274,12 +278,12 @@ class MissionPlanWidget(QWidget):
             return
         doc.addGroup(kind, self._selected_group())
 
-    def _select_family(self, index) -> None:
+    def _select_family(self, index: QModelIndex) -> None:
         self._selecting_family = True
         try:
             selection = self.ui.taskList.selectionModel()
             flags = QItemSelectionModel.Select | QItemSelectionModel.Rows
-            def select_children(parent) -> None:
+            def select_children(parent: QModelIndex) -> None:
                 for row in range(self.taskListModel.rowCount(parent)):
                     child = self.taskListModel.index(row, 0, parent)
                     selection.select(child, flags)
@@ -288,7 +292,7 @@ class MissionPlanWidget(QWidget):
         finally:
             self._selecting_family = False
 
-    def onTaskMenu(self, pos) -> None:
+    def onTaskMenu(self, pos: QPoint) -> None:
         if not self._editing:
             return
         menu = QMenu(self.ui.taskList)
@@ -302,7 +306,7 @@ class MissionPlanWidget(QWidget):
             stack.widget(i).setSizePolicy(policy, policy)
         stack.updateGeometry()
 
-    def activateEditorForTask(self, task):
+    def activateEditorForTask(self, task: Task | None) -> None:
         if task is None:
             editor = self.ui.taskEditorStack.currentWidget()
             if editor is not None and editor is not self.ui.defaultTaskEditorPage:

@@ -236,7 +236,7 @@ class MissionControlDockWidget(QgsDockWidget):
         if not doc.plan.tasks:
             iface.messageBar().pushWarning(None, "The mission plan has no tasks; nothing was sent.")
             return
-        empty = doc.plan.empty_groups()
+        empty = doc.plan.emptyGroups()
         if empty:
             names = ", ".join(f'"{group.description}"' for group in empty)
             iface.messageBar().pushWarning(None, f"Empty group {names} in the mission plan; nothing was sent.")
