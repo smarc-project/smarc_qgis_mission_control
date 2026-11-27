@@ -29,7 +29,7 @@ from qgis.PyQt.QtGui import QColor
 from ..compat import StrEnum, assert_never
 from ..domain.missionplan import MissionPlan
 from ..domain.tasks import Task
-from ..domain.taskspatial import isTaskAreaCorner, iterTaskWaypoints
+from ..domain.taskspatial import iterTaskAreas, iterTaskRouteWaypoints
 from ..domain.waypoints import Waypoint
 from .MissionAreas import MissionAreas
 from .MissionTracks import MissionTracks
@@ -274,13 +274,11 @@ class MissionLayerBridge(QObject):
 
     def _importTask(self, task: Task) -> None:
         # Tasks without waypoints currently have no map presence
-        for waypoint in iterTaskWaypoints(task):
-            self._importWaypoint(
-                task.uuid,
-                task.description,
-                waypoint,
-                isTaskAreaCorner(task, waypoint.uuid),
-            )
+        for waypoint in iterTaskRouteWaypoints(task):
+            self._importWaypoint(task.uuid, task.description, waypoint, False)
+        for _, corners in iterTaskAreas(task):
+            for corner in corners:
+                self._importWaypoint(task.uuid, task.description, corner, True)
 
     def _importWaypoint(self,
                         taskUuid: UUID,

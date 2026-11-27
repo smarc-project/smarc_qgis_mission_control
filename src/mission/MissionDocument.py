@@ -16,7 +16,9 @@ from ..domain.tasks import (
 )
 from ..domain.taskspatial import (
     isAreaField,
-    isTaskAreaCorner,
+    isWaypointListField,
+    iterTaskAreas,
+    iterTaskRouteWaypoints,
     iterTaskWaypoints,
     locateTaskWaypoint,
     waypointListFields,
@@ -232,14 +234,23 @@ class MissionDocument(QObject):
 
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
-            for waypoint in iterTaskWaypoints(task):
+            for waypoint in iterTaskRouteWaypoints(task):
                 feat = self.layerBridge._waypointToFeature(
                     task.uuid,
                     task.description,
                     waypoint,
-                    isTaskAreaCorner(task, waypoint.uuid),
+                    False,
                 )
                 self.layerBridge.waypointLayer.addFeature(feat)
+            for _, corners in iterTaskAreas(task):
+                for corner in corners:
+                    feat = self.layerBridge._waypointToFeature(
+                        task.uuid,
+                        task.description,
+                        corner,
+                        True,
+                    )
+                    self.layerBridge.waypointLayer.addFeature(feat)
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
@@ -301,10 +312,11 @@ class MissionDocument(QObject):
             field = fields[0]
         else:
             try:
-                field = [field for field in fields if field.name == fieldName][0]
-            except IndexError:
-                raise ValueError(f"Task has no waypoint list named '{fieldName}'") \
-                    from None
+                field = type(task).schema().field(fieldName)
+            except KeyError:
+                field = None
+            if field is None or not isWaypointListField(field):
+                raise ValueError(f"Task has no waypoint list named '{fieldName}'")
 
         waypointCls = waypointListType(field.baseType)
         assert(waypointCls is not None)

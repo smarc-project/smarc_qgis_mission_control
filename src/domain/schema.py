@@ -93,6 +93,13 @@ class FieldSpec:
 class Schema:
     fields: Sequence[FieldSpec]
 
+    def field(self, name: str) -> FieldSpec:
+        """The field called `name`; KeyError if there is none."""
+        for spec in self.fields:
+            if spec.name == name:
+                return spec
+        raise KeyError(name)
+
     # TODO: cache
     @classmethod
     def fromDataclass(cls, dtCls) -> 'Schema':

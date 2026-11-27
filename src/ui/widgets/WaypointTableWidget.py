@@ -41,8 +41,7 @@ class WaypointTableWidget(QWidget):
 
     def _hideToleranceForAreaCorners(self) -> None:
         """An area corner is never driven to, so its tolerance means nothing."""
-        [field] = [f for f in self._taskCls.schema().fields if f.name == self._fieldName]
-        if not isAreaField(field):
+        if not isAreaField(self._taskCls.schema().field(self._fieldName)):
             return
         for column, waypointField in enumerate(self._model.schema().fields):
             if waypointField.name == "tolerance":
