@@ -44,13 +44,7 @@ class MissionControlDockWidget(QgsDockWidget):
             self._fleetContext.mapManager, # for having access to FleetMapManager.onLookAtRequest() from FleetControlWidget
             self.ui.tabWidget
         )
-        # TODO: cleanup
-        self.ui.tabFleetControl.uploadMissionPlanRequested.connect(
-            lambda receivers: self._fleetContext.mqtt.onPublishMissionPlan(
-                self._missionContext.activeDocument().plan,
-                receivers
-            )
-        )
+        self.ui.tabFleetControl.uploadMissionPlanRequested.connect(self.onUploadMissionPlanRequested)
         self.ui.tabFleetControl.skipTaskRequested.connect(
             self._fleetContext.mqtt.onSkipTaskSignal
         )
@@ -230,6 +224,24 @@ class MissionControlDockWidget(QgsDockWidget):
 
         for file in dialog.selectedFiles():
             self._missionContext.loadMissionFromFile(file)
+
+    @pyqtSlot(set)
+    def onUploadMissionPlanRequested(self, receivers: set[str]) -> None:
+        doc = self._missionContext.activeDocument()
+        if doc is None:
+            iface.messageBar().pushWarning(None, "No mission plan is open; nothing was sent.")
+            return
+        # The officer refuses a TST with an empty seq or conc anywhere, as a plan that was
+        # sent before it was finished, so such a plan is not sent at all.
+        if not doc.plan.tasks:
+            iface.messageBar().pushWarning(None, "The mission plan has no tasks; nothing was sent.")
+            return
+        empty = doc.plan.emptyGroups()
+        if empty:
+            names = ", ".join(f'"{group.description}"' for group in empty)
+            iface.messageBar().pushWarning(None, f"Empty group {names} in the mission plan; nothing was sent.")
+            return
+        self._fleetContext.mqtt.onPublishMissionPlan(doc.plan, receivers)
 
     @pyqtSlot()
     def onSaveMissionPlan(self):

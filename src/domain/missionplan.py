@@ -107,6 +107,10 @@ class MissionPlan(SchemaMixin):
     def leaves(self) -> list[Task]:
         return leaves(self.tasks)
 
+    def emptyGroups(self) -> list[TaskGroup]:
+        """Groups with no children, at any depth. The officer refuses a TST that has one."""
+        return [node for _, _, node in walk(self.tasks) if isinstance(node, TaskGroup) and not node.children]
+
     def findNode(self, uuid: UUID) -> MissionNode | None:
         for _, _, node in walk(self.tasks):
             if node.uuid == uuid:
