@@ -271,3 +271,16 @@ def test_the_tree_selects_a_new_group_and_drops_a_deleted_one(qgis_app, tmp_path
     qgis_app.processEvents()
     assert model.rowCount(model.index(0, 0)) == 1
     assert model.node(model.index(0, 0, model.index(0, 0))).description == "first"
+
+
+def test_the_plan_finds_any_node_but_only_groups_as_groups(qgis_app):
+    left = _move_to("left")
+    together = TaskGroup(kind=GroupKind.CONC, description="together", children=[left])
+    plan = MissionPlan(name=GroupKind.SEQ.value, description="out", tasks=[together])
+
+    assert plan.findNode(left.uuid) is left
+    assert plan.findNode(together.uuid) is together
+    assert plan.findGroup(together.uuid) is together
+    # A task is not a group, and None names the root.
+    assert plan.findGroup(left.uuid) is None
+    assert plan.findGroup(None) is None

@@ -38,66 +38,70 @@ class MissionUndoCommand(QUndoCommand):
 class AddTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: MissionDocument, task: Task, parent=None) -> None:
+    def __init__(self, doc: MissionDocument, task: Task,
+                 group: TaskGroup | None = None) -> None:
         super().__init__(doc)
 
         self._task = task
-        self._parent_uuid = None if parent is None else parent.uuid
-        self._index = len(doc.plan.children_of(parent))
+        self._groupUuid = None if group is None else group.uuid
+        self._index = len(doc.plan.children_of(group))
 
     def redo(self) -> None:
         print(self.__class__.__name__, 'redo')
-        self._doc._addTaskAt(self._task, self._index, self._parent_uuid)
+        self._doc._addTaskAt(self._task, self._index, self._groupUuid)
 
     def undo(self) -> None:
         print(self.__class__.__name__, 'undo')
-        self._doc._deleteTaskAt(self._index, self._parent_uuid)
+        self._doc._deleteTaskAt(self._index, self._groupUuid)
 
 class DeleteTaskUndoCommand(MissionUndoCommand):
     _task: Task
 
-    def __init__(self, doc: MissionDocument, task: Task, parent=None) -> None:
+    def __init__(self, doc: MissionDocument, task: Task,
+                 group: TaskGroup | None = None) -> None:
         super().__init__(doc)
 
         self._task = task
-        self._parent_uuid = None if parent is None else parent.uuid
-        self._index = doc.plan.children_of(parent).index(self._task)
+        self._groupUuid = None if group is None else group.uuid
+        self._index = doc.plan.children_of(group).index(self._task)
 
     def redo(self) -> None:
         print(self.__class__.__name__, 'redo')
-        self._doc._deleteTaskAt(self._index, self._parent_uuid)
+        self._doc._deleteTaskAt(self._index, self._groupUuid)
 
     def undo(self) -> None:
         print(self.__class__.__name__, 'undo')
-        self._doc._addTaskAt(self._task, self._index, self._parent_uuid)
+        self._doc._addTaskAt(self._task, self._index, self._groupUuid)
 
 class AddGroupUndoCommand(MissionUndoCommand):
-    def __init__(self, doc: MissionDocument, group: TaskGroup, parent=None) -> None:
+    def __init__(self, doc: MissionDocument, group: TaskGroup,
+                 owner: TaskGroup | None = None) -> None:
         super().__init__(doc)
 
         self._group = group
-        self._parent_uuid = None if parent is None else parent.uuid
-        self._index = len(doc.plan.children_of(parent))
+        self._ownerUuid = None if owner is None else owner.uuid
+        self._index = len(doc.plan.children_of(owner))
 
     def redo(self) -> None:
-        self._doc._addGroupAt(self._group, self._index, self._parent_uuid)
+        self._doc._addGroupAt(self._group, self._index, self._ownerUuid)
 
     def undo(self) -> None:
-        self._doc._deleteGroupAt(self._index, self._parent_uuid)
+        self._doc._deleteGroupAt(self._index, self._ownerUuid)
 
 class DeleteGroupUndoCommand(MissionUndoCommand):
-    def __init__(self, doc: MissionDocument, group: TaskGroup, parent=None) -> None:
+    def __init__(self, doc: MissionDocument, group: TaskGroup,
+                 owner: TaskGroup | None = None) -> None:
         super().__init__(doc)
 
         self._group = group
-        self._parent_uuid = None if parent is None else parent.uuid
-        self._index = doc.plan.children_of(parent).index(group)
+        self._ownerUuid = None if owner is None else owner.uuid
+        self._index = doc.plan.children_of(owner).index(group)
 
     def redo(self) -> None:
-        self._doc._deleteGroupAt(self._index, self._parent_uuid)
+        self._doc._deleteGroupAt(self._index, self._ownerUuid)
 
     def undo(self) -> None:
-        self._doc._addGroupAt(self._group, self._index, self._parent_uuid)
+        self._doc._addGroupAt(self._group, self._index, self._ownerUuid)
 
 class AddWaypointUndoCommand(MissionUndoCommand):
     _task: Task
