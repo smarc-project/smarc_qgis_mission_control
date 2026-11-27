@@ -124,7 +124,7 @@ class MissionAreas(QObject):
         root.appendChild(QgsRuleBasedRenderer.Rule(
             self._createSymbol(keepInColor, selectable),
             filterExp='NOT "no-go"',
-            label="Keep-in area",
+            label="Area",
         ))
         root.appendChild(QgsRuleBasedRenderer.Rule(
             self._createNoGoSymbol(noGoColor, selectable),

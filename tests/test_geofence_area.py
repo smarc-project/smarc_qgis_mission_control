@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from qgis.core import QgsGeometry, QgsPointXY, QgsWkbTypes
+from qgis.core import QgsGeometry, QgsPointXY, QgsRenderContext, QgsWkbTypes
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
@@ -285,3 +285,40 @@ def test_only_no_go_zones_are_drawn_with_diagonal_lines(qgis_app, tmp_path: Path
             [hatch] = [layer for layer in layers if isinstance(layer, QgsLinePatternFillSymbolLayer)]
             assert hatch.lineAngle() == 45
     assert hatchedRules == {'NOT "no-go"': False, '"no-go"': True}
+
+
+def _selection_driven_properties(renderer) -> set[str]:
+    """Names of the symbol properties whose expression reads the task selection."""
+    from qgis.core import QgsSymbolLayer
+
+    names = {
+        value: name for name, value in vars(QgsSymbolLayer).items()
+        if name.startswith("Property") and isinstance(value, int)
+    }
+    found = set()
+
+    def walk(symbol) -> None:
+        for layer in symbol.symbolLayers():
+            properties = layer.dataDefinedProperties()
+            for key in properties.propertyKeys():
+                if "@selected_task" in properties.property(key).expressionString():
+                    found.add(names.get(key, str(key)))
+            if layer.subSymbol() is not None:
+                walk(layer.subSymbol())
+
+    for symbol in renderer.symbols(QgsRenderContext()):
+        walk(symbol)
+    return found
+
+
+def test_selection_changes_size_and_width_not_colour(qgis_app, tmp_path: Path):
+    plan, _ = _fenced_plan([_corner(59.0, 18.0), _corner(59.0, 18.1), _corner(59.1, 18.1)])
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+    bridge = doc.layerBridge
+    sizeOrWidth = {"PropertySize", "PropertyStrokeWidth", "PropertyWidth"}
+
+    # The active mission's renderers; only those show the selection
+    for owner in (bridge, bridge.tracks, bridge.areas):
+        driven = _selection_driven_properties(owner._activeRenderer)
+        assert driven, type(owner).__name__
+        assert driven <= sizeOrWidth, (type(owner).__name__, driven)

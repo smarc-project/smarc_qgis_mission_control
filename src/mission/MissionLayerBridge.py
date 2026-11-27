@@ -67,7 +67,6 @@ class MissionLayerBridge(QObject):
 
     SMARC_GROUP_NAME = 'SMaRCMissions'
     # TODO: centralized place for these
-    COLOR_SELECTED_TASK = QColor("#D81B60")
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
 
@@ -129,15 +128,7 @@ class MissionLayerBridge(QObject):
 
         markerSymbolLayer = symbol.symbolLayer(0)
         markerSymbolLayer.setColor(self.COLOR_ACTIVE)
-        markerSymbolLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyFillColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_uuids, "task-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{markerSymbolLayer.color().name()}' END
-            ''')
-        )
+        # The selected task's markers grow; colour stays, since red means a no-go zone
         markerSymbolLayer.setSize(2.0)
         markerSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertySize,

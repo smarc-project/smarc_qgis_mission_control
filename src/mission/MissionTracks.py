@@ -52,7 +52,6 @@ class MissionTracks(QObject):
     ]
 
     LABEL_BACKGROUND_OPACITY: float = 0.7
-    COLOR_SELECTED_TASK = QColor("#D81B60")
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
 
@@ -85,17 +84,8 @@ class MissionTracks(QObject):
                 "CASE WHEN \"same-task\" THEN 'solid' ELSE 'dash' END"
             )
         )
-        lineSymbolLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyStrokeColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_waypoint_uuids, "from-waypoint-uuid")
-                    AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{lineSymbolLayer.color().name()}'
-                END
-            ''')
-        )
+        # The selected task's route gets thicker; colour stays, since red means a
+        # no-go zone
         lineSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertyStrokeWidth,
             QgsProperty.fromExpression(
@@ -130,17 +120,6 @@ class MissionTracks(QObject):
                     AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
                 THEN 5
                 ELSE 3 END
-            ''')
-        )
-        arrowMarkerLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyFillColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_waypoint_uuids, "from-waypoint-uuid")
-                    AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{arrowMarkerLayer.color().name()}'
-                END
             ''')
         )
 
