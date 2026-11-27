@@ -26,15 +26,19 @@ class TaskTreeModel(QAbstractItemModel):
     def bind(self, doc: MissionDocument) -> None:
         self.unbind()
         self._doc = doc
-        self._doc.taskAdded.connect(self._on_task_added)
+        self._doc.taskAdded.connect(self._on_node_added)
         self._doc.taskDeleted.connect(self._reset)
+        self._doc.groupAdded.connect(self._on_node_added)
+        self._doc.groupDeleted.connect(self._reset)
         self._doc.taskChanged.connect(self._on_task_changed)
         self._reset()
 
     def unbind(self) -> None:
         if self._doc is not None:
-            self._doc.taskAdded.disconnect(self._on_task_added)
+            self._doc.taskAdded.disconnect(self._on_node_added)
             self._doc.taskDeleted.disconnect(self._reset)
+            self._doc.groupAdded.disconnect(self._on_node_added)
+            self._doc.groupDeleted.disconnect(self._reset)
             self._doc.taskChanged.disconnect(self._on_task_changed)
         self._doc = None
         self._reset()
@@ -158,7 +162,7 @@ class TaskTreeModel(QAbstractItemModel):
         return True
 
     @pyqtSlot(UUID, int)
-    def _on_task_added(self, uuid: UUID, _row: int) -> None:
+    def _on_node_added(self, uuid: UUID, _row: int) -> None:
         self._reset()
         self.nodeAdded.emit(self.indexOf(self._node_by_uuid(uuid)))
 
