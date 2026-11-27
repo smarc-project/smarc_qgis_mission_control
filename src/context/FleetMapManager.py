@@ -74,17 +74,6 @@ class FleetMapManager(QObject):
         self._fleetState.vehicleDiscovered.connect(self.onVehicleDiscovered)
         self._fleetState.vehicleUpdated.connect(self.onVehicleUpdated)
 
-        self._waypointLayer.setMapTipTemplate(
-            '<b>Vehicle:</b> [% array_last(string_to_array("vehicle-name", \'/\')) %]<br>' \
-            '<b>Heading:</b> [% round("heading", 2) %]°<br>' \
-            '<b>Course:</b> [% round("course", 2) %]°<br>' \
-            '<b>Depth:</b> [% round("depth", 2) %] m<br>' \
-            '<b>Altitude:</b> [% round("altitude", 2) %] m<br>' \
-            '<b>Speed:</b> [% round("speed", 2) %] m/s<br>' \
-            '<b>Roll:</b> [% round("roll", 2) %]°<br>' \
-            '<b>Pitch:</b> [% round("pitch", 2) %]°'
-        )
-
     @pyqtSlot()
     def _setupWaypointLayer(self):
         qgs = QgsProject.instance()
@@ -110,6 +99,17 @@ class FleetMapManager(QObject):
             QgsField('is-current', QVariant.Bool),
         ])
         self._waypointLayer.updateFields()
+
+        self._waypointLayer.setMapTipTemplate(
+            '<b>Vehicle:</b> [% array_last(string_to_array("vehicle-name", \'/\')) %]<br>' \
+            '<b>Heading:</b> [% round("heading", 2) %]°<br>' \
+            '<b>Course:</b> [% round("course", 2) %]°<br>' \
+            '<b>Depth:</b> [% round("depth", 2) %] m<br>' \
+            '<b>Altitude:</b> [% round("altitude", 2) %] m<br>' \
+            '<b>Speed:</b> [% round("speed", 2) %] m/s<br>' \
+            '<b>Roll:</b> [% round("roll", 2) %]°<br>' \
+            '<b>Pitch:</b> [% round("pitch", 2) %]°'
+        )
 
         # Customized renderer which will colorize points for each vehicle
         self._waypointLayer.setRenderer(QgsCategorizedSymbolRenderer("vehicle-name"))
