@@ -265,10 +265,10 @@ class MissionControlDockWidget(QgsDockWidget):
         return False
 
     @pyqtSlot(str, str, str)
-    def onCommandRefused(self, vehicleTopic: str, command: str, reason: str) -> None:
+    def onCommandRefused(self, vehicleTopic: str, refusedWhat: str, reason: str) -> None:
         # Refusals the plugin cannot predict, e.g. a mission it cannot see is still running.
         vehicleName = vehicleTopic.split('/')[-1]
-        iface.messageBar().pushWarning(None, f"{vehicleName} refused {command}: {reason}")
+        iface.messageBar().pushWarning(None, f"{vehicleName} refused {refusedWhat}: {reason}")
 
     @pyqtSlot()
     def onSaveMissionPlan(self):

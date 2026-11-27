@@ -57,7 +57,7 @@ class MqttService(QObject):
     # Any message under a vehicle's topic except commands sent to it, including ones relayed for it by
     # another unit (e.g. surface units filling in an underwater vehicle's sensors).
     vehicleHeard = pyqtSignal(str)
-    # vehicleTopic, command ("start-tst", "signal-task", ...), the officer's reason.
+    # vehicleTopic, the command in the operator's words ("the mission plan"), the officer's reason.
     commandRefused = pyqtSignal(str, str, str)
 
     _client: mqtt.Client | None
@@ -74,9 +74,10 @@ class MqttService(QObject):
         self._vehicles: dict[str, dict] = {}
         self._connect_rc = None
         self._senderId = "QGIS-MissionControl"  # default, overridable via setSenderId()
-        # com-uuid → command, for our own commands the officer has not answered yet.
+        # vehicleTopic → {com-uuid → the command in the operator's words}, for our own
+        # commands whose refusal is shown and which the officer has not answered yet.
         # Its replies share the topic with replies to other operators' commands.
-        self._commandsAwaitingReply: dict[str, str] = {}
+        self._commandsAwaitingReply: dict[str, dict[str, str]] = {}
 
         self._connect_event = threading.Event()
 
@@ -236,9 +237,23 @@ class MqttService(QObject):
             # unsupported vehicle subtopic!
             ...
 
-    def _publishCommand(self, topic: str, data: dict) -> None:
-        self._commandsAwaitingReply[data['com-uuid']] = data['command']
+    def _publishCommand(
+        self,
+        vehicleTopic: str,
+        topic: str,
+        data: dict,
+        refusalWords: str | None,
+    ) -> None:
+        """Publish a command; with refusalWords, a refusal of it is shown in those words."""
+        if refusalWords is not None:
+            awaiting = self._commandsAwaitingReply.setdefault(vehicleTopic, {})
+            awaiting[data['com-uuid']] = refusalWords
         self._client.publish(topic, json.dumps(data))
+
+    @pyqtSlot(str)
+    def forgetCommandsAwaitingReply(self, vehicleTopic: str) -> None:
+        """A silent vehicle may never answer; its replies would otherwise be awaited forever."""
+        self._commandsAwaitingReply.pop(vehicleTopic, None)
 
     def _readReply(self, vehicleTopic: str, payload: bytes) -> None:
         """Report a refusal of one of our commands; "accepted", "ok" and "pong" stay quiet."""
@@ -246,11 +261,12 @@ class MqttService(QObject):
         # A start-task reply has no "response", only the started task's status.
         if 'response' not in data:
             return
-        command = self._commandsAwaitingReply.pop(data.get('response-to'), None)
-        if command is None:
+        awaiting = self._commandsAwaitingReply.get(vehicleTopic, {})
+        words = awaiting.pop(data.get('response-to'), None)
+        if words is None:
             return
         if data['response'] not in ('accepted', 'ok', 'pong'):
-            self.commandRefused.emit(vehicleTopic, command, data['response'])
+            self.commandRefused.emit(vehicleTopic, words, data['response'])
 
     @pyqtSlot(MissionPlan, set)
     def onPublishMissionPlan(self, plan: MissionPlan, vehicleTopics: set[str]):
@@ -278,7 +294,7 @@ class MqttService(QObject):
             "com-uuid": str(uuid4()),
             "sender": self._senderId,
         }
-        self._publishCommand(topic, data)
+        self._publishCommand(vehicleTopic, topic, data, refusalWords='the mission plan')
 
     @pyqtSlot(set)
     def onEmergencySignal(self, vehicleTopics: set[str]):
@@ -302,7 +318,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._publishCommand(topic, data)
+        self._publishCommand(vehicleTopic, topic, data, refusalWords=None)
 
     @pyqtSlot(set)
     def onResetEmergencySignal(self, vehicleTopics: set[str]):
@@ -326,7 +342,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._publishCommand(topic, data)
+        self._publishCommand(vehicleTopic, topic, data, refusalWords=None)
 
     @pyqtSlot(set)
     def onSkipTaskSignal(self, targets: dict):
@@ -337,19 +353,20 @@ class MqttService(QObject):
             self.publishSkipTaskSignal(vehicleTopic, taskUuid)
 
     def publishSkipTaskSignal(self, vehicleTopic: str, taskUuid: UUID):
-        self.publishTaskSignal(vehicleTopic, taskUuid, '$enough')
+        self.publishTaskSignal(vehicleTopic, taskUuid, '$enough', 'the skip')
 
     @pyqtSlot(dict)
     def onAbortTasksSignal(self, targets: dict[str, list[UUID]]) -> None:
         for vehicleTopic, taskUuids in targets.items():
             for taskUuid in taskUuids:
-                self.publishTaskSignal(vehicleTopic, taskUuid, '$abort')
+                self.publishTaskSignal(vehicleTopic, taskUuid, '$abort', 'the abort')
 
     def publishTaskSignal(
         self,
         vehicleTopic: str,
         taskUuid: UUID,
         signal: str,
+        refusalWords: str,
     ) -> None:
         """Send one WARA-PS task signal ($enough, $abort, ...) to one executing task."""
         if self._client is None:
@@ -363,7 +380,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._publishCommand(topic, data)
+        self._publishCommand(vehicleTopic, topic, data, refusalWords=refusalWords)
 
     @pyqtSlot(set)
     def onAbortMissionSignal(self, vehicleTopics: set[str]):
@@ -387,4 +404,4 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._publishCommand(topic, data)
+        self._publishCommand(vehicleTopic, topic, data, refusalWords=None)
