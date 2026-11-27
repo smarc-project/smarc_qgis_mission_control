@@ -30,7 +30,7 @@ from qgis.PyQt.QtCore import QObject, QSizeF, Qt, QVariant, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.missionplan import MissionPlan
-from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.taskspatial import iterTaskRouteWaypoints
 from ..domain.waypoints import Waypoint
 
 if TYPE_CHECKING:
@@ -52,7 +52,6 @@ class MissionTracks(QObject):
     ]
 
     LABEL_BACKGROUND_OPACITY: float = 0.7
-    COLOR_SELECTED_TASK = QColor("#D81B60")
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
 
@@ -85,17 +84,8 @@ class MissionTracks(QObject):
                 "CASE WHEN \"same-task\" THEN 'solid' ELSE 'dash' END"
             )
         )
-        lineSymbolLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyStrokeColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_waypoint_uuids, "from-waypoint-uuid")
-                    AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{lineSymbolLayer.color().name()}'
-                END
-            ''')
-        )
+        # The selected task's route gets thicker; colour stays, since red means a
+        # no-go zone
         lineSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertyStrokeWidth,
             QgsProperty.fromExpression(
@@ -130,17 +120,6 @@ class MissionTracks(QObject):
                     AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
                 THEN 5
                 ELSE 3 END
-            ''')
-        )
-        arrowMarkerLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyFillColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_waypoint_uuids, "from-waypoint-uuid")
-                    AND array_contains(@selected_task_waypoint_uuids, "to-waypoint-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{arrowMarkerLayer.color().name()}'
-                END
             ''')
         )
 
@@ -259,9 +238,9 @@ class MissionTracks(QObject):
         self._layer.dataProvider().truncate()
 
         data = []
-        # Discover all the waypoints and their tasks
+        # Discover the route waypoints and their tasks. Area corners belong to MissionAreas.
         for task in plan.leaves():
-            for waypoint in iterTaskWaypoints(task):
+            for waypoint in iterTaskRouteWaypoints(task):
                 data.append((waypoint, task.uuid))
 
         # Build initial features
@@ -320,11 +299,12 @@ class MissionTracks(QObject):
             return
 
         # Find the surrounding waypoints
-        prevWaypoint = self._doc.index.previousWaypointByUuid(waypointUuid)
-        nextWaypoint = self._doc.index.nextWaypointByUuid(waypointUuid)
+        prevWaypoint = self._doc.index.previousRouteWaypointByUuid(waypointUuid)
+        nextWaypoint = self._doc.index.nextRouteWaypointByUuid(waypointUuid)
 
         if not any((prevWaypoint, nextWaypoint)):
-            # TODO: invalid mapping
+            # An area corner has no route neighbours, so no segment changes.
+            # TODO: otherwise an invalid mapping
             return
 
         updated = False
@@ -372,11 +352,12 @@ class MissionTracks(QObject):
             return
 
         # Find the surrounding waypoints
-        prevWaypoint = self._doc.index.previousWaypointByUuid(waypointUuid)
-        nextWaypoint = self._doc.index.nextWaypointByUuid(waypointUuid)
+        prevWaypoint = self._doc.index.previousRouteWaypointByUuid(waypointUuid)
+        nextWaypoint = self._doc.index.nextRouteWaypointByUuid(waypointUuid)
 
         if not any((prevWaypoint, nextWaypoint)):
-            # TODO: invalid mapping
+            # An area corner has no route neighbours, so no segment changes.
+            # TODO: otherwise an invalid mapping
             return
 
         updated = False
@@ -437,13 +418,13 @@ class MissionTracks(QObject):
             # TODO: invalid mapping
             return
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
         if len(waypoints) == 0:
             # No waypoints on this task
             return
 
-        prevTaskWaypoint = self._doc.index.previousWaypointByUuid(waypoints[0].uuid)
-        nextTaskWaypoint = self._doc.index.nextWaypointByUuid(waypoints[-1].uuid)
+        prevTaskWaypoint = self._doc.index.previousRouteWaypointByUuid(waypoints[0].uuid)
+        nextTaskWaypoint = self._doc.index.nextRouteWaypointByUuid(waypoints[-1].uuid)
 
         # If both previous and next task waypoints exist, there must currently be a
         # single segment between them. We need to get rid of it.
@@ -470,7 +451,7 @@ class MissionTracks(QObject):
         thisWaypoint = waypoints[0]
         finalWaypoint = waypoints[-1]
         while thisWaypoint.uuid != finalWaypoint.uuid:
-            nextWaypoint = self._doc.index.nextWaypointByUuid(thisWaypoint.uuid)
+            nextWaypoint = self._doc.index.nextRouteWaypointByUuid(thisWaypoint.uuid)
 
             # All segments here are part of the same task, by definition
             feat = self.createLineFeature(thisWaypoint, nextWaypoint, True)
@@ -500,13 +481,13 @@ class MissionTracks(QObject):
             # TODO: invalid mapping
             return
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
         if len(waypoints) == 0:
             # No waypoints on this task
             return
 
-        prevTaskWaypoint = self._doc.index.previousWaypointByUuid(waypoints[0].uuid)
-        nextTaskWaypoint = self._doc.index.nextWaypointByUuid(waypoints[-1].uuid)
+        prevTaskWaypoint = self._doc.index.previousRouteWaypointByUuid(waypoints[0].uuid)
+        nextTaskWaypoint = self._doc.index.nextRouteWaypointByUuid(waypoints[-1].uuid)
 
         thisWaypoint = prevTaskWaypoint or waypoints[0]
         finalWaypoint = nextTaskWaypoint or waypoints[-1]
@@ -517,7 +498,7 @@ class MissionTracks(QObject):
             # Take the "from" segment for each waypoint
             _, feat = self.lineFeaturesForWaypointUuid(thisWaypoint.uuid)
             fids.append(feat.id())
-            thisWaypoint = self._doc.index.nextWaypointByUuid(thisWaypoint.uuid)
+            thisWaypoint = self._doc.index.nextRouteWaypointByUuid(thisWaypoint.uuid)
 
         updated = False
         # No features is possible if this is the last task with waypoints in the

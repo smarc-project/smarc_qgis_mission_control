@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from ..compat import StrEnum
 from .jsoncodec import JsonCodec
 from .schema import Column, SchemaMixin, Unit
-from .waypoints import AUVWaypoint, GeoPoint, Waypoint
+from .waypoints import AUVWaypoint, GeoArea, GeoPoint, Waypoint
 
 __all__ = [
     "Task",
@@ -40,6 +40,10 @@ class Task(SchemaMixin):
             "name": self.type,
             "params": JsonCodec.encodeSchema(self)
         }
+
+    def isNoGoArea(self) -> bool:
+        """Whether the task's areas keep the vehicle out. Most areas keep it in."""
+        return False
 
     @classmethod
     def fromJson(cls: Type[TaskInstanceT], data: dict) -> TaskInstanceT:
@@ -186,8 +190,13 @@ class SmarcStartGeofenceTask(Task):
         = 1.0
     stay_inside: Annotated[bool, Column("StayInside")] \
         = True
-    waypoints: Annotated[list[GeoPoint], Column("Waypoints")] \
+    #: The fence polygon. The JSON key stays "waypoints", which the geofence server
+    #: reads and which older mission files carry.
+    waypoints: Annotated[GeoArea, Column("Area")] \
         = field(default_factory = list)
+
+    def isNoGoArea(self) -> bool:
+        return not self.stay_inside
 
 @task("smarc-stop-geofence")
 class SmarcStopGeofenceTask(Task):
@@ -377,5 +386,5 @@ class SearchAreaTask(Task):
         = "Default"
     target_size: Annotated[float, Column("Target size")] \
         = 0.0
-    area: Annotated[list[GeoPoint], Column("Area")] \
+    area: Annotated[GeoArea, Column("Area")] \
         = field(default_factory = list)

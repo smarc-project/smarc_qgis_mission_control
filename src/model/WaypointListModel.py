@@ -36,11 +36,8 @@ class WaypointListModel(SchemaBasedModel):
 
 
         try:
-            field = [
-                field for field in type(task).schema().fields
-                if field.name == fieldName
-            ][0]
-        except IndexError:
+            field = type(task).schema().field(fieldName)
+        except KeyError:
             field = None
         if field is None or not (isWaypointField(field) or isWaypointListField(field)):
             raise ValueError(f"Task has no waypoint field named '{fieldName}'")

@@ -29,8 +29,9 @@ from qgis.PyQt.QtGui import QColor
 from ..compat import StrEnum, assert_never
 from ..domain.missionplan import MissionPlan
 from ..domain.tasks import Task
-from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.taskspatial import iterTaskAreas, iterTaskRouteWaypoints
 from ..domain.waypoints import Waypoint
+from .MissionAreas import MissionAreas
 from .MissionTracks import MissionTracks
 
 __all__ = ["MissionLayerBridge"]
@@ -66,7 +67,6 @@ class MissionLayerBridge(QObject):
 
     SMARC_GROUP_NAME = 'SMaRCMissions'
     # TODO: centralized place for these
-    COLOR_SELECTED_TASK = QColor("#D81B60")
     COLOR_INACTIVE = QColor("#666666")
     COLOR_ACTIVE = QColor("#7040A0")
 
@@ -82,6 +82,7 @@ class MissionLayerBridge(QObject):
     _layerGroup: QgsLayerTreeGroup
     waypointLayer: QgsVectorLayer
     tracks: MissionTracks
+    areas: MissionAreas
 
     def __init__(self, plan: MissionPlan, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -95,8 +96,10 @@ class MissionLayerBridge(QObject):
         self._initializeLayers(plan.uuid)
         self._populateLayers(plan)
 
+        # Area corners have no tolerance, so their tip stays empty
         self.waypointLayer.setMapTipTemplate(
-            '<b>Tolerance:</b> [% "tolerance" %] m'
+            '[% CASE WHEN "tolerance" IS NOT NULL '
+            'THEN \'<b>Tolerance:</b> \' || "tolerance" || \' m\' END %]'
         )
 
     def _setupLayerGroup(self, planUuid: UUID) -> None:
@@ -125,15 +128,7 @@ class MissionLayerBridge(QObject):
 
         markerSymbolLayer = symbol.symbolLayer(0)
         markerSymbolLayer.setColor(self.COLOR_ACTIVE)
-        markerSymbolLayer.setDataDefinedProperty(
-            QgsSimpleMarkerSymbolLayer.PropertyFillColor,
-            QgsProperty.fromExpression(f'''
-                CASE WHEN
-                    array_contains(@selected_task_uuids, "task-uuid")
-                THEN '{self.COLOR_SELECTED_TASK.name()}'
-                ELSE '{markerSymbolLayer.color().name()}' END
-            ''')
-        )
+        # The selected task's markers grow; colour stays, since red means a no-go zone
         markerSymbolLayer.setSize(2.0)
         markerSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertySize,
@@ -262,6 +257,7 @@ class MissionLayerBridge(QObject):
 
         # Setup the tracks layer
         self.tracks = MissionTracks(self.parent(), self._layerGroup, self)
+        self.areas = MissionAreas(self.parent(), self._layerGroup, self)
 
     def _populateLayers(self, plan: MissionPlan) -> None:
         for task in plan.leaves():
@@ -269,17 +265,32 @@ class MissionLayerBridge(QObject):
 
     def _importTask(self, task: Task) -> None:
         # Tasks without waypoints currently have no map presence
-        for waypoint in iterTaskWaypoints(task):
-            self._importWaypoint(task.uuid, task.description, waypoint)
+        for waypoint in iterTaskRouteWaypoints(task):
+            self._importWaypoint(task.uuid, task.description, waypoint, False)
+        for _, corners in iterTaskAreas(task):
+            for corner in corners:
+                self._importWaypoint(task.uuid, task.description, corner, True)
 
-    def _importWaypoint(self, taskUuid: UUID, taskDescription: str, waypoint: Waypoint) -> None:
-        feat = self._waypointToFeature(taskUuid, taskDescription, waypoint)
+    def _importWaypoint(self,
+                        taskUuid: UUID,
+                        taskDescription: str,
+                        waypoint: Waypoint,
+                        isAreaCorner: bool) -> None:
+        feat = self._waypointToFeature(taskUuid, taskDescription, waypoint, isAreaCorner)
         self.waypointLayer.dataProvider().addFeature(feat)
 
         self._fidToWaypointUuid[feat.id()] = waypoint.uuid
         self._waypointUuidToFid[waypoint.uuid] = feat.id()
 
-    def _waypointToFeature(self, taskUuid: UUID, taskDescription: str, waypoint: Waypoint) -> QgsFeature:
+    def _waypointToFeature(self,
+                           taskUuid: UUID,
+                           taskDescription: str,
+                           waypoint: Waypoint,
+                           isAreaCorner: bool) -> QgsFeature:
+        """
+        A point feature for the waypoint. An area corner is never driven to, so it gets
+        no tolerance: the ring and the map tip stay off for it.
+        """
         feat = QgsFeature(self.waypointLayer.fields())
         point = QgsPointXY(waypoint.longitude, waypoint.latitude)
         geom = QgsGeometry.fromPointXY(point)
@@ -287,7 +298,7 @@ class MissionLayerBridge(QObject):
         feat.setAttribute('task-uuid', str(taskUuid))
         feat.setAttribute('task-description', str(taskDescription))
         feat.setAttribute('waypoint-uuid', str(waypoint.uuid))
-        feat.setAttribute('tolerance', float(waypoint.tolerance))
+        feat.setAttribute('tolerance', None if isAreaCorner else float(waypoint.tolerance))
 
         return feat
 
@@ -475,12 +486,12 @@ class MissionLayerBridge(QObject):
         else:
             qgs.removeMapLayer(layerId)
 
-        try:
-            layerId = self.tracks._layer.id()
-        except RuntimeError:
-            # Layer may have been removed externally, e.g. during QGIS shutdown
-            pass
-        else:
+        for layer in (self.tracks._layer, self.areas.layer):
+            try:
+                layerId = layer.id()
+            except RuntimeError:
+                # Layer may have been removed externally, e.g. during QGIS shutdown
+                continue
             qgs.removeMapLayer(layerId)
 
         if sip.isdeleted(self._layerGroup):

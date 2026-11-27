@@ -3,7 +3,7 @@ from uuid import UUID
 
 from ..domain.missionplan import MissionPlan
 from ..domain.tasks import Task
-from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.taskspatial import iterTaskRouteWaypoints, iterTaskWaypoints
 from ..domain.waypoints import Waypoint
 
 
@@ -74,14 +74,17 @@ class MissionIndex:
         del self.waypointMap[waypointUuid]
         del self.waypointTaskMap[waypointUuid]
 
-    def previousWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+    def previousRouteWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+        """The waypoint before this one on the vehicle's route; None for an area corner."""
         task = self.taskByWaypointUuid(waypointUuid)
         waypoint = self.waypointByUuid(waypointUuid)
         if not all((task, waypoint)):
             # TODO: invalid mapping
             return None
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
+        if waypoint not in waypoints:
+            return None
         index = waypoints.index(waypoint)
 
         if index == 0:
@@ -91,7 +94,7 @@ class MissionIndex:
             taskIndex -= 1
             while taskIndex >= 0:
                 task = ordered[taskIndex]
-                waypoints = list(iterTaskWaypoints(task))
+                waypoints = list(iterTaskRouteWaypoints(task))
                 if len(waypoints):
                     # Task has waypoints, last one is the one we are looking for
                     return waypoints[-1]
@@ -103,14 +106,17 @@ class MissionIndex:
             # Previous waypoint on same task
             return waypoints[index - 1]
 
-    def nextWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+    def nextRouteWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+        """The waypoint after this one on the vehicle's route; None for an area corner."""
         task = self.taskByWaypointUuid(waypointUuid)
         waypoint = self.waypointByUuid(waypointUuid)
         if not all((task, waypoint)):
             # TODO: invalid mapping
             return None
 
-        waypoints = list(iterTaskWaypoints(task))
+        waypoints = list(iterTaskRouteWaypoints(task))
+        if waypoint not in waypoints:
+            return None
         index = waypoints.index(waypoint)
 
         if index == len(waypoints) - 1:
@@ -120,7 +126,7 @@ class MissionIndex:
             taskIndex += 1
             while taskIndex < len(ordered):
                 task = ordered[taskIndex]
-                waypoints = list(iterTaskWaypoints(task))
+                waypoints = list(iterTaskRouteWaypoints(task))
                 if len(waypoints):
                     # Task has waypoints, first one is the one we are looking for
                     return waypoints[0]

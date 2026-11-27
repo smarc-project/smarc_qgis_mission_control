@@ -6,6 +6,7 @@ __all__ = [
     "Unit",
     "Column",
     "JsonKey",
+    "Area",
     "FieldSpec",
     "Schema",
     "SchemaMixin"
@@ -29,12 +30,21 @@ class JsonKey:
 
 
 @dataclass(frozen=True)
+class Area:
+    """
+    Marks a list of points as the corners of a closed area, such as a geofence,
+    instead of a route the vehicle drives along. The JSON stays a plain list.
+    """
+
+
+@dataclass(frozen=True)
 class FieldSpec:
     name: str
     baseType: Any
     column: Column | None
     unit: Unit | None
     jsonKey: JsonKey | None
+    area: Area | None = None
 
     def label(self, preferLong: bool = True) -> str:
         if not self.column:
@@ -83,6 +93,13 @@ class FieldSpec:
 class Schema:
     fields: Sequence[FieldSpec]
 
+    def field(self, name: str) -> FieldSpec:
+        """The field called `name`; KeyError if there is none."""
+        for spec in self.fields:
+            if spec.name == name:
+                return spec
+        raise KeyError(name)
+
     # TODO: cache
     @classmethod
     def fromDataclass(cls, dtCls) -> 'Schema':
@@ -106,6 +123,7 @@ class Schema:
             unit = None
             column = None
             jsonKey = None
+            area = None
             for arg in reversed(meta):
                 if isinstance(arg, Column):
                     column = arg
@@ -113,8 +131,17 @@ class Schema:
                     unit = arg
                 elif isinstance(arg, JsonKey):
                     jsonKey = arg
+                elif isinstance(arg, Area):
+                    area = arg
 
-            specs.append(FieldSpec(f.name, baseType, column, unit, jsonKey))
+            specs.append(FieldSpec(
+                f.name,
+                baseType,
+                column,
+                unit,
+                jsonKey,
+                area,
+            ))
 
         return cls(specs)
 
