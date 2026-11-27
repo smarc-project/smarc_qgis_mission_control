@@ -242,9 +242,10 @@ class FleetControlWidget(QFrame):
         box.setIcon(QMessageBox.Warning)
         box.setWindowTitle("Action server busy")
         box.setText("\n".join(lines))
+        several = sum(len(tasks) for tasks in blocking.values()) > 1
         box.setInformativeText(
-            "Override aborts the running task and sends this plan "
-            "once the vehicle reports the server free."
+            f"Override aborts the running {'tasks' if several else 'task'} and sends this plan "
+            f"once {'each vehicle reports its server' if len(blocking) > 1 else 'the vehicle reports the server'} free."
         )
         overrideButton = box.addButton("Override", QMessageBox.DestructiveRole)
         box.setDefaultButton(box.addButton(QMessageBox.Cancel))
