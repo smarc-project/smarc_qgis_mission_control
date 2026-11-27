@@ -110,3 +110,45 @@ def test_track_restarts_cleanly_after_clear(fleet):
 
     assert _track(SAM) == [(8.0, False), (9.0, True)]
     assert _bandPoints() == 2
+
+
+def _visibleBands() -> int:
+    """Track lines on the canvas that are drawn."""
+    scene = qgis.utils.iface.mapCanvas().scene()
+    return sum(1 for i in scene.items() if isinstance(i, QgsRubberBand) and i.isVisible())
+
+
+def _markersShown(topic: str) -> bool:
+    [layer] = QgsProject.instance().mapLayersByName("SMaRCVehiclePositionLayer")
+    renderer = layer.renderer()
+    return renderer.categories()[renderer.categoryIndexForLabel(topic)].renderState()
+
+
+def test_unchecking_a_vehicle_hides_its_track_and_checking_brings_it_back(fleet):
+    states, manager = fleet
+    for lon in range(3):
+        states.move(SAM, float(lon), 59.0)
+
+    manager.onShowOnMapChanged(SAM, False)
+    assert not _markersShown(SAM)
+    assert _visibleBands() == 0
+
+    manager.onShowOnMapChanged(SAM, True)
+    assert _markersShown(SAM)
+    assert _visibleBands() == 1
+
+
+def test_an_unchecked_vehicle_that_moves_keeps_its_track_hidden(fleet):
+    states, manager = fleet
+    states.move(SAM, 0.0, 59.0)
+    states.move(LOLO, 0.0, 58.0)
+
+    manager.onShowOnMapChanged(SAM, False)
+    states.move(SAM, 1.0, 59.0)
+    states.move(LOLO, 1.0, 58.0)
+
+    # Only LOLO's line is drawn.
+    assert _visibleBands() == 1
+    manager.clearAllVehicleMarkers()
+    states.move(SAM, 2.0, 59.0)
+    assert _visibleBands() == 0
