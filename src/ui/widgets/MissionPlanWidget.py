@@ -302,7 +302,7 @@ class MissionPlanWidget(QWidget):
             stack.widget(i).setSizePolicy(policy, policy)
         stack.updateGeometry()
 
-    def activateEditorForTask(self, task):
+    def activateEditorForTask(self, task: Task | None) -> None:
         if task is None:
             editor = self.ui.taskEditorStack.currentWidget()
             if editor is not None and editor is not self.ui.defaultTaskEditorPage:
@@ -314,6 +314,11 @@ class MissionPlanWidget(QWidget):
             doc = self._document()
             if doc is None:
                 return
+            leaving = self.ui.taskEditorStack.currentWidget()
+            # The stack only hides the editor it leaves. Unbinding it stops its map tools,
+            # which would otherwise keep editing the task that is no longer shown.
+            if leaving is not editor and leaving is not self.ui.defaultTaskEditorPage:
+                leaving.unbind()
             editor.bind(doc, task.uuid)
             was_hidden = not self.ui.taskEditorStack.isVisible()
             self.ui.taskEditorStack.setCurrentWidget(editor)
