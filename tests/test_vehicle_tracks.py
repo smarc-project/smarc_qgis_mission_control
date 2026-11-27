@@ -1,53 +1,9 @@
-import pytest
 import qgis.utils
 from qgis.core import QgsProject
 from qgis.gui import QgsRubberBand
 
-from qgis.PyQt.QtCore import QObject, pyqtSignal
-from qgis.PyQt.QtWidgets import QMainWindow
-
-from src.context.FleetMapManager import FleetMapManager
-from src.context.FleetState import VehicleState
-
 SAM = "waraps/unit/subsurface/simulation/sam1"
 LOLO = "waraps/unit/subsurface/simulation/lolo1"
-
-
-class _Fleet(QObject):
-    vehicleDiscovered = pyqtSignal(str)
-    vehicleUpdated = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self._states: dict[str, VehicleState] = {}
-
-    def vehicleState(self, topic):
-        return self._states.get(topic)
-
-    def move(self, topic, lon, lat):
-        if topic not in self._states:
-            self._states[topic] = VehicleState()
-            self.vehicleDiscovered.emit(topic)
-        state = self._states[topic]
-        state.longitude, state.latitude, state.heading = 11.0 + lon, lat, 0.0
-        self.vehicleUpdated.emit(topic)
-
-
-@pytest.fixture
-def fleet(qgis_app, monkeypatch):
-    window = QMainWindow()
-    window.show()
-    monkeypatch.setattr(qgis.utils.iface, "mainWindow", lambda: window, raising=False)
-    fleet = _Fleet()
-    manager = FleetMapManager(fleet, None)
-    yield fleet, manager
-    manager.cleanup()
-    # The plugin's unload takes the track lines off the canvas; do the same here.
-    scene = qgis.utils.iface.mapCanvas().scene()
-    for item in scene.items():
-        if isinstance(item, QgsRubberBand):
-            scene.removeItem(item)
-    window.close()
 
 
 def _track(topic):
