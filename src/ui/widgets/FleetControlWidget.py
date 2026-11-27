@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from uuid import UUID
 
 from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
@@ -19,7 +18,9 @@ ABORT_MISSION_BUTTON_CLICKS_REQUIRED = 3
 
 
 class FleetControlWidget(QFrame):
-    uploadMissionPlanRequested = pyqtSignal(MissionPlan, set)
+    uploadMissionPlanRequested = pyqtSignal(set)
+    # The plan passed every check; publish it to these vehicles.
+    sendMissionPlanRequested = pyqtSignal(MissionPlan, set)
     skipTaskRequested = pyqtSignal(dict) # dict[str, UUID]: vehicleTopic → first task UUID
     pauseRequested = pyqtSignal(set)
     continueRequested = pyqtSignal(set)
@@ -29,18 +30,11 @@ class FleetControlWidget(QFrame):
     resetEmergencyRequested = pyqtSignal(set)
     clearTracksRequested = pyqtSignal()
 
-    def __init__(
-        self,
-        fleetState: FleetState,
-        mapManager,
-        parent: QWidget | None = None,
-        activePlan: Callable[[], MissionPlan | None] = lambda: None,
-    ):
+    def __init__(self, fleetState: FleetState, mapManager, parent: QWidget | None = None):
         super().__init__(parent)
 
         self._fleetState = fleetState
         self._mapManager = mapManager
-        self._activePlan = activePlan
         # Overridden starts: vehicleTopic → (plan, the aborted tasks it waits out).
         # The officer refuses the plan until those tasks leave tasks-executing.
         self._plansAwaitingFreeServer: dict[str, tuple[MissionPlan, set[UUID]]] = {}
@@ -186,13 +180,17 @@ class FleetControlWidget(QFrame):
         self.ui.vehiclesSelectedLabel.setText(text)
 
     @pyqtSlot()
-    def onUploadMissionPlanClicked(self) -> None:
-        plan = self._activePlan()
-        if plan is None:
-            return
+    def onUploadMissionPlanClicked(self):
+        self.uploadMissionPlanRequested.emit(self._selected)
+
+    def sendPlanUnlessServerBusy(
+        self,
+        plan: MissionPlan,
+        vehicleTopics: set[str],
+    ) -> None:
         free: set[str] = set()
         blocking: dict[str, list[WaraPsExecutingTask]] = {}
-        for vehicleTopic in self._selected:
+        for vehicleTopic in vehicleTopics:
             state = self._fleetState.vehicleState(vehicleTopic)
             busy = tasksBlockingPlan(plan, state.executingTasks or []) if state else []
             if busy:
@@ -202,7 +200,7 @@ class FleetControlWidget(QFrame):
         # Free vehicles get the plan now; the officer would refuse it on the busy ones
         # ("task already executing on ..."), so only those wait for the operator.
         if free:
-            self.uploadMissionPlanRequested.emit(plan, free)
+            self.sendMissionPlanRequested.emit(plan, free)
         if blocking and self._confirmOverride(free, blocking):
             self._overrideBusyServers(plan, blocking)
 
@@ -256,7 +254,7 @@ class FleetControlWidget(QFrame):
         if any(task.uuid in aborted for task in state.executingTasks or []):
             return
         del self._plansAwaitingFreeServer[vehicleTopic]
-        self.uploadMissionPlanRequested.emit(plan, {vehicleTopic})
+        self.sendMissionPlanRequested.emit(plan, {vehicleTopic})
         self._refreshUiState()
 
     @pyqtSlot()

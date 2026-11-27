@@ -6,7 +6,6 @@ from qgis.PyQt.QtTest import QSignalSpy, QTest
 
 from src.context.FleetState import INACTIVE_CHECK_INTERVAL, FleetState
 from src.context.MqttService import MqttService, VehicleHeartbeatEvent
-from src.domain.missionplan import MissionPlan
 from src.ui.widgets.FleetControlWidget import FleetControlWidget
 from src.ui.widgets.LiveViewWidget import LiveViewWidget
 from src.ui.widgets.VehicleCardWidget import VehicleCardWidget
@@ -128,8 +127,7 @@ def test_raising_the_timeout_brings_back_vehicles_inside_it(fleet):
 
 
 def test_fleet_control_hides_and_deselects_a_silent_vehicle(fleet):
-    plan = MissionPlan(name="seq", description="Survey")
-    panel = FleetControlWidget(fleet.state, _MapManager(), activePlan=lambda: plan)
+    panel = FleetControlWidget(fleet.state, _MapManager())
     fleet.hear(SAM)
     fleet.hear(LOLO)
     panel.selectAll()
@@ -147,7 +145,7 @@ def test_fleet_control_hides_and_deselects_a_silent_vehicle(fleet):
     assert not cards[LOLO].isHidden()
     assert panel.ui.vehiclesSelectedLabel.text() == "All (1) vehicles selected · 1 silent, hidden"
     panel.ui.uploadMissionPlanButton.click()
-    assert list(uploads[0]) == [plan, {LOLO}]
+    assert list(uploads[0]) == [{LOLO}]
 
     fleet.hear(SAM)
     assert not cards[SAM].isHidden() and not cards[SAM].isChecked()

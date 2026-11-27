@@ -8,7 +8,6 @@ from qgis.PyQt.QtCore import QCoreApplication, pyqtSlot
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
 
 from ...context.FleetContext import FleetContext
-from ...domain.missionplan import MissionPlan
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
 from ..generated.MissionControlDockWidgetUi import Ui_MissionControlDockWidget
@@ -43,10 +42,10 @@ class MissionControlDockWidget(QgsDockWidget):
         self.ui.tabFleetControl = FleetControlWidget(
             self._fleetContext.state,
             self._fleetContext.mapManager, # for having access to FleetMapManager.onLookAtRequest() from FleetControlWidget
-            self.ui.tabWidget,
-            activePlan=self._activeMissionPlan,
+            self.ui.tabWidget
         )
-        self.ui.tabFleetControl.uploadMissionPlanRequested.connect(
+        self.ui.tabFleetControl.uploadMissionPlanRequested.connect(self.onUploadMissionPlanRequested)
+        self.ui.tabFleetControl.sendMissionPlanRequested.connect(
             self._fleetContext.mqtt.onPublishMissionPlan
         )
         self.ui.tabFleetControl.abortTasksRequested.connect(
@@ -125,10 +124,6 @@ class MissionControlDockWidget(QgsDockWidget):
         )
 
         self.retranslateUi2()
-
-    def _activeMissionPlan(self) -> MissionPlan | None:
-        doc = self._missionContext.activeDocument()
-        return None if doc is None else doc.plan
 
     def retranslateUi2(self):
         _translate = QCoreApplication.translate
@@ -235,6 +230,26 @@ class MissionControlDockWidget(QgsDockWidget):
 
         for file in dialog.selectedFiles():
             self._missionContext.loadMissionFromFile(file)
+
+    @pyqtSlot(set)
+    def onUploadMissionPlanRequested(self, receivers: set[str]) -> None:
+        doc = self._missionContext.activeDocument()
+        if doc is None:
+            iface.messageBar().pushWarning(None, "No mission plan is open; nothing was sent.")
+            return
+        # The officer refuses a TST with an empty seq or conc anywhere, as a plan that was
+        # sent before it was finished, so such a plan is not sent at all.
+        if not doc.plan.tasks:
+            iface.messageBar().pushWarning(None, "The mission plan has no tasks; nothing was sent.")
+            return
+        empty = doc.plan.empty_groups()
+        if empty:
+            names = ", ".join(f'"{group.description}"' for group in empty)
+            iface.messageBar().pushWarning(None, f"Empty group {names} in the mission plan; nothing was sent.")
+            return
+        # A complete plan can still be refused per vehicle, while one of its action
+        # servers runs another task; the fleet tab checks that and sends.
+        self.ui.tabFleetControl.sendPlanUnlessServerBusy(doc.plan, receivers)
 
     @pyqtSlot()
     def onSaveMissionPlan(self):
