@@ -7,6 +7,7 @@ from qgis.core import (
 from qgis.gui import QgsMapCanvas, QgsMapMouseEvent, QgsMapTool, QgsRubberBand
 from qgis.utils import iface
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QAction
@@ -188,7 +189,8 @@ class MissionMapManager(QObject):
         if self._canvas.mapTool() is tool:
             # Unset first, so the stop that deactivate() sends through the button is a no-op.
             self._canvas.unsetMapTool(tool)
-            if self._previousTool is not None:
+            # The user's tool may be gone by now, e.g. a plugin that made it was unloaded.
+            if self._previousTool is not None and not sip.isdeleted(self._previousTool):
                 self._canvas.setMapTool(self._previousTool)
         tool.setAction(None)
 

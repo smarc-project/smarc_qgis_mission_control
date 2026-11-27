@@ -132,13 +132,13 @@ class WaypointTableWidget(QWidget):
         # Ensure correct state for buttons
         self.onWaypointSelectionChanged(None, None)
 
-    def bind(self, doc: MissionDocument, taskUuid: UUID):
+    def bind(self, doc: MissionDocument, taskUuid: UUID) -> None:
         # The map tools work on the task bound before. A model reset also clears the
         # selection without selectionChanged, so they stop here.
         self._stopMapTools()
         self._model.bind(doc, taskUuid, self._fieldName)
 
-    def unbind(self):
+    def unbind(self) -> None:
         self._stopMapTools()
         self._model.unbind()
 
@@ -174,7 +174,7 @@ class WaypointTableWidget(QWidget):
         self.ui.waypointTable.closeEditor(editor, QAbstractItemDelegate.NoHint)
 
     @pyqtSlot(bool)
-    def onEditModeChanged(self, editMode: bool):
+    def onEditModeChanged(self, editMode: bool) -> None:
         if not editMode:
             self._stopMapTools()
         self._model.setEditable(editMode)

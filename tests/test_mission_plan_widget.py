@@ -1,14 +1,19 @@
 from pathlib import Path
 
+from collections.abc import Callable
+
 import pytest
+from qgis.gui import QgsMapCanvas, QgsMapTool
 
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QAction
 
 from src.domain.missionplan import GroupKind, MissionPlan, TaskGroup
 from src.domain.tasks import MovePathTask
 from src.mission.MissionContext import MissionContext
 from src.mission.MissionDocument import MissionDocument
 from src.ui.widgets.MissionPlanWidget import MissionPlanWidget
+from src.ui.widgets.WaypointTableWidget import WaypointTableWidget
 
 
 def _open(plan: MissionPlan, tmp_path: Path) -> tuple[MissionPlanWidget, MissionDocument]:
@@ -229,12 +234,11 @@ def _path(description: str, latitude: float) -> MovePathTask:
         GeoPoint(latitude=latitude + step, longitude=18.07, uuid=uuid4()) for step in (0.0, 0.01, 0.02)])
 
 
-def _editing_first_path(qgis_app, tmp_path: Path):
+def _editing_first_path(qgis_app, tmp_path: Path) -> tuple[
+        MissionPlanWidget, MissionDocument, QgsMapCanvas, QgsMapTool, WaypointTableWidget]:
     """Two paths and two move-tos, in edit mode, the first path's editor shown, the user on Pan."""
     import qgis.utils
     from qgis.gui import QgsMapToolPan
-
-    from src.ui.widgets.WaypointTableWidget import WaypointTableWidget
 
     plan = MissionPlan(name=GroupKind.SEQ.value, description="out",
                        tasks=[_path("first", 59.30), _path("second", 59.40),
@@ -252,7 +256,7 @@ def _editing_first_path(qgis_app, tmp_path: Path):
     return widget, doc, canvas, users_tool, table
 
 
-def _start_move(table):
+def _start_move(table: WaypointTableWidget) -> QAction:
     from qgis.PyQt.QtCore import QItemSelectionModel
 
     table.ui.waypointTable.selectionModel().select(
@@ -325,7 +329,7 @@ def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis
     assert canvas.mapTool() is users_tool
 
 
-def _start_add(table):
+def _start_add(table: WaypointTableWidget) -> QAction:
     add = table.ui.buttonAddWaypoint.defaultAction()
     add.setChecked(True)
     return add
@@ -380,3 +384,19 @@ def test_leaving_edit_mode_stops_add_waypoint_and_select_location(qgis_app, tmp_
     doc.stopEditing(False)
     assert not selectLocation.isChecked()
     assert canvas.mapTool() is users_tool
+
+
+def test_stopping_a_tool_after_the_users_tool_was_deleted_leaves_the_canvas_empty(qgis_app, tmp_path: Path):
+    from qgis.core import QgsPointXY
+
+    from qgis.PyQt import sip
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    move = _start_move(table)
+    sip.delete(users_tool)
+
+    # Right-click, called directly: an error raised inside a Qt slot would only be printed.
+    doc.parent().mapManager.onSelectLocationToolMapClicked(QgsPointXY(18.0, 59.0), Qt.RightButton)
+
+    assert not move.isChecked()
+    assert canvas.mapTool() is None
