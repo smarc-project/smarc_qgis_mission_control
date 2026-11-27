@@ -15,6 +15,8 @@ from ..domain.tasks import (
     UnsupportedTaskCreationError,
 )
 from ..domain.taskspatial import (
+    isAreaField,
+    isTaskAreaCorner,
     iterTaskWaypoints,
     locateTaskWaypoint,
     waypointListFields,
@@ -231,7 +233,12 @@ class MissionDocument(QObject):
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
             for waypoint in iterTaskWaypoints(task):
-                feat = self.layerBridge._waypointToFeature(task.uuid, task.description, waypoint)
+                feat = self.layerBridge._waypointToFeature(
+                    task.uuid,
+                    task.description,
+                    waypoint,
+                    isTaskAreaCorner(task, waypoint.uuid),
+                )
                 self.layerBridge.waypointLayer.addFeature(feat)
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
@@ -307,7 +314,12 @@ class MissionDocument(QObject):
             uuid = waypointUuid or uuid4()
         )
 
-        feat = self.layerBridge._waypointToFeature(taskUuid, description, waypoint)
+        feat = self.layerBridge._waypointToFeature(
+            taskUuid,
+            description,
+            waypoint,
+            isAreaField(field),
+        )
         cmd = AddWaypointUndoCommand(self, task, field.name, waypoint)
 
         with self.layerBridge.customEditCommand("Add waypoint"):

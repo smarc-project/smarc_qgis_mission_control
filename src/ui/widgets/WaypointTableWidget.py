@@ -7,6 +7,7 @@ from qgis.PyQt.QtCore import QItemSelection, Qt, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtWidgets import QAbstractItemDelegate, QAction, QHeaderView, QWidget
 
 from ...domain.tasks import Task
+from ...domain.taskspatial import isAreaField
 from ...domain.waypoints import Waypoint
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
@@ -38,9 +39,19 @@ class WaypointTableWidget(QWidget):
 
         self.setup()
 
+    def _hideToleranceForAreaCorners(self) -> None:
+        """An area corner is never driven to, so its tolerance means nothing."""
+        [field] = [f for f in self._taskCls.schema().fields if f.name == self._fieldName]
+        if not isAreaField(field):
+            return
+        for column, waypointField in enumerate(self._model.schema().fields):
+            if waypointField.name == "tolerance":
+                self.ui.waypointTable.setColumnHidden(column, True)
+
     def setup(self):
         # Model setup
         self.ui.waypointTable.setModel(self._model)
+        self._hideToleranceForAreaCorners()
         self.ui.waypointTable.selectionModel().selectionChanged.connect(
             self.onWaypointSelectionChanged)
         # Ensure correct state for buttons

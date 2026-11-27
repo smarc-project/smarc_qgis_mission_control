@@ -30,7 +30,7 @@ from qgis.PyQt.QtCore import QObject, QSizeF, Qt, QVariant, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.missionplan import MissionPlan
-from ..domain.taskspatial import iterTaskRouteWaypoints, taskFieldIsArea
+from ..domain.taskspatial import iterTaskRouteWaypoints
 from ..domain.waypoints import Waypoint
 
 if TYPE_CHECKING:
@@ -277,10 +277,6 @@ class MissionTracks(QObject):
         if features:
             self._layer.dataProvider().addFeatures(features)
 
-    def _isAreaField(self, taskUuid: UUID, fieldName: str) -> bool:
-        task = self._doc.index.taskByUuid(taskUuid)
-        return task is not None and taskFieldIsArea(task, fieldName)
-
     def createLineFeature(self, fromWaypoint: Waypoint, toWaypoint: Waypoint,
                           sameTask: bool) -> QgsFeature:
         fromPoint = QgsPointXY(fromWaypoint.longitude, fromWaypoint.latitude)
@@ -318,20 +314,18 @@ class MissionTracks(QObject):
     @pyqtSlot(UUID, str, UUID)
     def onWaypointAdded(self, taskUuid: UUID, fieldName: str,
                         waypointUuid: UUID) -> None:
-        if self._isAreaField(taskUuid, fieldName):
-            # An area corner is not on the route, so no segment changes
-            return
         waypoint = self._doc.index.waypointByUuid(waypointUuid)
         if waypoint is None:
             # TODO: invalid mapping
             return
 
         # Find the surrounding waypoints
-        prevWaypoint = self._doc.index.previousWaypointByUuid(waypointUuid)
-        nextWaypoint = self._doc.index.nextWaypointByUuid(waypointUuid)
+        prevWaypoint = self._doc.index.previousRouteWaypointByUuid(waypointUuid)
+        nextWaypoint = self._doc.index.nextRouteWaypointByUuid(waypointUuid)
 
         if not any((prevWaypoint, nextWaypoint)):
-            # TODO: invalid mapping
+            # An area corner has no route neighbours, so no segment changes.
+            # TODO: otherwise an invalid mapping
             return
 
         updated = False
@@ -373,20 +367,18 @@ class MissionTracks(QObject):
     @pyqtSlot(UUID, str, UUID, int)
     def onBeforeWaypointDeleted(self, taskUuid: UUID, fieldName: str,
                                 waypointUuid: UUID, index: int) -> None:
-        if self._isAreaField(taskUuid, fieldName):
-            # An area corner is not on the route, so no segment changes
-            return
         waypoint = self._doc.index.waypointByUuid(waypointUuid)
         if waypoint is None:
             # TODO: invalid mapping
             return
 
         # Find the surrounding waypoints
-        prevWaypoint = self._doc.index.previousWaypointByUuid(waypointUuid)
-        nextWaypoint = self._doc.index.nextWaypointByUuid(waypointUuid)
+        prevWaypoint = self._doc.index.previousRouteWaypointByUuid(waypointUuid)
+        nextWaypoint = self._doc.index.nextRouteWaypointByUuid(waypointUuid)
 
         if not any((prevWaypoint, nextWaypoint)):
-            # TODO: invalid mapping
+            # An area corner has no route neighbours, so no segment changes.
+            # TODO: otherwise an invalid mapping
             return
 
         updated = False
@@ -452,8 +444,8 @@ class MissionTracks(QObject):
             # No waypoints on this task
             return
 
-        prevTaskWaypoint = self._doc.index.previousWaypointByUuid(waypoints[0].uuid)
-        nextTaskWaypoint = self._doc.index.nextWaypointByUuid(waypoints[-1].uuid)
+        prevTaskWaypoint = self._doc.index.previousRouteWaypointByUuid(waypoints[0].uuid)
+        nextTaskWaypoint = self._doc.index.nextRouteWaypointByUuid(waypoints[-1].uuid)
 
         # If both previous and next task waypoints exist, there must currently be a
         # single segment between them. We need to get rid of it.
@@ -480,7 +472,7 @@ class MissionTracks(QObject):
         thisWaypoint = waypoints[0]
         finalWaypoint = waypoints[-1]
         while thisWaypoint.uuid != finalWaypoint.uuid:
-            nextWaypoint = self._doc.index.nextWaypointByUuid(thisWaypoint.uuid)
+            nextWaypoint = self._doc.index.nextRouteWaypointByUuid(thisWaypoint.uuid)
 
             # All segments here are part of the same task, by definition
             feat = self.createLineFeature(thisWaypoint, nextWaypoint, True)
@@ -515,8 +507,8 @@ class MissionTracks(QObject):
             # No waypoints on this task
             return
 
-        prevTaskWaypoint = self._doc.index.previousWaypointByUuid(waypoints[0].uuid)
-        nextTaskWaypoint = self._doc.index.nextWaypointByUuid(waypoints[-1].uuid)
+        prevTaskWaypoint = self._doc.index.previousRouteWaypointByUuid(waypoints[0].uuid)
+        nextTaskWaypoint = self._doc.index.nextRouteWaypointByUuid(waypoints[-1].uuid)
 
         thisWaypoint = prevTaskWaypoint or waypoints[0]
         finalWaypoint = nextTaskWaypoint or waypoints[-1]
@@ -527,7 +519,7 @@ class MissionTracks(QObject):
             # Take the "from" segment for each waypoint
             _, feat = self.lineFeaturesForWaypointUuid(thisWaypoint.uuid)
             fids.append(feat.id())
-            thisWaypoint = self._doc.index.nextWaypointByUuid(thisWaypoint.uuid)
+            thisWaypoint = self._doc.index.nextRouteWaypointByUuid(thisWaypoint.uuid)
 
         updated = False
         # No features is possible if this is the last task with waypoints in the

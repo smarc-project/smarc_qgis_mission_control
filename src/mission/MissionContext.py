@@ -146,7 +146,7 @@ class MissionContext(QObject):
 
         doc.layerBridge.waypointLayer.triggerRepaint()
         doc.layerBridge.tracks._layer.triggerRepaint()
-        doc.layerBridge.areas.layer().triggerRepaint()
+        doc.layerBridge.areas.layer.triggerRepaint()
 
     @pyqtSlot(PendingWaypointTask, QgsPointXY)
     # TODO: should this be here?

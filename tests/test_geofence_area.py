@@ -8,7 +8,12 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
 
 from src.domain.missionplan import GroupKind, MissionPlan
-from src.domain.tasks import MoveToTask, SmarcStartGeofenceTask
+from src.domain.tasks import (
+    MovePathTask,
+    MoveToTask,
+    SearchAreaTask,
+    SmarcStartGeofenceTask,
+)
 from src.domain.waypoints import GeoPoint
 from src.mission.MissionContext import MissionContext
 from src.mission.MissionDocument import MissionDocument
@@ -68,7 +73,7 @@ def _fenced_plan(corners: list[GeoPoint]) -> tuple[MissionPlan, SmarcStartGeofen
 
 
 def _area_polygons(doc: MissionDocument) -> list[QgsGeometry]:
-    return [feat.geometry() for feat in doc.layerBridge.areas.layer().getFeatures()]
+    return [feat.geometry() for feat in doc.layerBridge.areas.layer.getFeatures()]
 
 
 def _track_segments(doc: MissionDocument) -> int:
@@ -164,3 +169,67 @@ def test_deleting_the_fence_task_removes_its_polygon_and_undo_restores_it(qgis_a
     doc.layerBridge.waypointLayer.undoStack().undo()
     assert len(_area_polygons(doc)) == 1
     assert _track_segments(doc) == 1
+
+
+def test_area_corners_have_no_tolerance_ring_or_column(qgis_app, tmp_path: Path):
+    from qgis.core import NULL
+
+    from src.ui.widgets.WaypointTableWidget import WaypointTableWidget
+
+    corners = [_corner(59.0, 18.0), _corner(59.0, 18.1), _corner(59.1, 18.1)]
+    plan, fence = _fenced_plan(corners)
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+    layer = doc.layerBridge.waypointLayer
+
+    def tolerance(waypointUuid) -> object:
+        fid = doc.layerBridge.featureIdForWaypointUuid(waypointUuid)
+        return layer.getFeature(fid).attribute("tolerance")
+
+    # The ring is drawn from this attribute; NULL draws none
+    for corner in corners:
+        assert tolerance(corner.uuid) in (None, NULL)
+    assert tolerance(plan.tasks[0].waypoint.uuid) == 10.0
+
+    # A corner added by the map tool gets none either
+    doc.startEditing()
+    doc.addWaypoint(fence.uuid, "fence", 59.1, 18.0, fieldName="waypoints")
+    assert tolerance(fence.waypoints[-1].uuid) in (None, NULL)
+
+    context = MissionContext()
+    columns = GeoPoint.schema().fields
+    toleranceColumn = [f.name for f in columns].index("tolerance")
+    fenceTable = WaypointTableWidget(SmarcStartGeofenceTask, "waypoints", GeoPoint, context)
+    pathTable = WaypointTableWidget(MovePathTask, "waypoints", GeoPoint, context)
+    assert fenceTable.ui.waypointTable.isColumnHidden(toleranceColumn)
+    assert not pathTable.ui.waypointTable.isColumnHidden(toleranceColumn)
+
+
+def test_a_search_area_is_drawn_as_an_area_and_keeps_its_json(qgis_app, tmp_path: Path):
+    corners = [_corner(59.0, 18.0), _corner(59.0, 18.1), _corner(59.1, 18.1)]
+    search = SearchAreaTask(description="search", uuid=uuid4(), area=corners)
+    plan = MissionPlan(
+        name=GroupKind.SEQ.value,
+        description="search",
+        tasks=[_move_to("before", 58.9), search, _move_to("after", 59.2)],
+    )
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+
+    assert len(_area_polygons(doc)) == 1
+    assert _track_segments(doc) == 1
+    params = search.toJson()["params"]
+    assert [(p["latitude"], p["longitude"]) for p in params["area"]] == [
+        (59.0, 18.0), (59.0, 18.1), (59.1, 18.1)]
+    # UUIDs are not saved, so compare the saved form
+    assert SearchAreaTask.fromJson(search.toJson()).toJson() == search.toJson()
+
+
+def test_route_neighbours_skip_area_corners(qgis_app, tmp_path: Path):
+    corners = [_corner(59.0, 18.0), _corner(59.0, 18.1), _corner(59.1, 18.1)]
+    plan, fence = _fenced_plan(corners)
+    before, after = plan.tasks[0].waypoint, plan.tasks[2].waypoint
+    doc = MissionDocument(plan, tmp_path / "mission.json")
+
+    assert doc.index.nextRouteWaypointByUuid(before.uuid) is after
+    assert doc.index.previousRouteWaypointByUuid(after.uuid) is before
+    assert doc.index.nextRouteWaypointByUuid(corners[0].uuid) is None
+    assert doc.index.previousRouteWaypointByUuid(corners[1].uuid) is None

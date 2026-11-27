@@ -39,7 +39,7 @@ class MissionAreas(QObject):
     added and deleted like any waypoint; this layer only follows them.
     """
     _doc: MissionDocument
-    _layer: QgsVectorLayer
+    layer: QgsVectorLayer
     _activeRenderer: QgsFeatureRenderer
     _inactiveRenderer: QgsFeatureRenderer
     _fields: list[QgsField] = [
@@ -74,9 +74,6 @@ class MissionAreas(QObject):
         self._doc.taskAdded.connect(self.onTaskAdded)
         self._doc.beforeTaskDeleted.connect(self.onBeforeTaskDeleted)
 
-    def layer(self) -> QgsVectorLayer:
-        return self._layer
-
     def _createRenderer(self, fillColor: str, strokeColor: str) -> QgsFeatureRenderer:
         """A see-through fill with a solid edge; the colours are QGIS expressions."""
         symbol = QgsFillSymbol()
@@ -108,43 +105,43 @@ class MissionAreas(QObject):
         return self._createRenderer(color, color)
 
     def _setupLayer(self, layerGroup: QgsLayerTreeGroup) -> None:
-        self._layer = QgsVectorLayer(
+        self.layer = QgsVectorLayer(
             "Polygon?crs=EPSG:4326",
             "Areas",
             "memory",
         )
-        self._layer.dataProvider().addAttributes(self._fields)
-        self._layer.updateFields()
+        self.layer.dataProvider().addAttributes(self._fields)
+        self.layer.updateFields()
 
         # Make the layer non-removable (by users)
-        flags = self._layer.flags()
-        flags &= ~self._layer.LayerFlag.Removable
-        self._layer.setFlags(flags)
+        flags = self.layer.flags()
+        flags &= ~self.layer.LayerFlag.Removable
+        self.layer.setFlags(flags)
 
         self._activeRenderer = self._createActiveRenderer()
         self._inactiveRenderer = self._createInactiveRenderer()
         self.setActive(True)
 
         # Added after the waypoints and tracks, so it is drawn under them
-        QgsProject.instance().addMapLayer(self._layer, False)
-        layerGroup.addLayer(self._layer)
+        QgsProject.instance().addMapLayer(self.layer, False)
+        layerGroup.addLayer(self.layer)
 
     def setActive(self, active: bool = True) -> None:
-        self._layer.setOpacity(1.0 if active else 0.4)
+        self.layer.setOpacity(1.0 if active else 0.4)
         renderer = self._activeRenderer if active else self._inactiveRenderer
         # Need to clone the reusable renderer, since layer takes ownership of it
-        self._layer.setRenderer(renderer.clone())
-        self._layer.triggerRepaint()
+        self.layer.setRenderer(renderer.clone())
+        self.layer.triggerRepaint()
 
     def rebuildLayerFromMissionPlan(self, plan: MissionPlan) -> None:
-        self._layer.dataProvider().truncate()
+        self.layer.dataProvider().truncate()
         features = [
             feat
             for task in plan.leaves()
             for feat in self._createTaskAreaFeatures(task)
         ]
         if features:
-            self._layer.dataProvider().addFeatures(features)
+            self.layer.dataProvider().addFeatures(features)
 
     def _createTaskAreaFeatures(self, task: Task) -> list[QgsFeature]:
         features = []
@@ -156,7 +153,7 @@ class MissionAreas(QObject):
             # Close the ring explicitly; the last corner joins back to the first
             ring.append(ring[0])
 
-            feat = QgsFeature(self._layer.fields())
+            feat = QgsFeature(self.layer.fields())
             feat.setGeometry(QgsGeometry.fromPolygonXY([ring]))
             feat.setAttribute("task-uuid", str(task.uuid))
             feat.setAttribute("field-name", spec.name)
@@ -166,10 +163,10 @@ class MissionAreas(QObject):
     def _deleteTaskAreaFeatures(self, taskUuid: UUID) -> bool:
         fids = [
             feat.id()
-            for feat in self._layer.getFeatures(f'"task-uuid" = \'{taskUuid}\'')
+            for feat in self.layer.getFeatures(f'"task-uuid" = \'{taskUuid}\'')
         ]
         if fids:
-            self._layer.dataProvider().deleteFeatures(fids)
+            self.layer.dataProvider().deleteFeatures(fids)
         return bool(fids)
 
     def redrawTaskAreas(self, taskUuid: UUID) -> None:
@@ -182,12 +179,12 @@ class MissionAreas(QObject):
         updated = self._deleteTaskAreaFeatures(taskUuid)
         features = self._createTaskAreaFeatures(task)
         if features:
-            self._layer.dataProvider().addFeatures(features)
+            self.layer.dataProvider().addFeatures(features)
             updated = True
 
         if updated:
-            self._layer.updateExtents()
-            self._layer.triggerRepaint()
+            self.layer.updateExtents()
+            self.layer.triggerRepaint()
 
     @pyqtSlot(UUID, str, UUID)
     def onWaypointAdded(self,
@@ -217,5 +214,5 @@ class MissionAreas(QObject):
     @pyqtSlot(UUID)
     def onBeforeTaskDeleted(self, taskUuid: UUID) -> None:
         if self._deleteTaskAreaFeatures(taskUuid):
-            self._layer.updateExtents()
-            self._layer.triggerRepaint()
+            self.layer.updateExtents()
+            self.layer.triggerRepaint()

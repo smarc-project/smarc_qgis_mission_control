@@ -57,8 +57,12 @@ def iterTaskAreas(task: Task) -> Iterator[tuple[FieldSpec, list[Waypoint]]]:
             yield spec, spec.value(task)
 
 
-def taskFieldIsArea(task: Task, fieldName: str) -> bool:
-    return any(spec.name == fieldName for spec, _ in iterTaskAreas(task))
+def isTaskAreaCorner(task: Task, waypointUuid: UUID) -> bool:
+    return any(
+        corner.uuid == waypointUuid
+        for _, corners in iterTaskAreas(task)
+        for corner in corners
+    )
 
 
 def locateTaskWaypoint(task: Task, waypointUuid: UUID) \

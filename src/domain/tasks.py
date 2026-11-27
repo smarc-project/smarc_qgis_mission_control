@@ -379,5 +379,5 @@ class SearchAreaTask(Task):
         = "Default"
     target_size: Annotated[float, Column("Target size")] \
         = 0.0
-    area: Annotated[list[GeoPoint], Column("Area")] \
+    area: Annotated[GeoArea, Column("Area")] \
         = field(default_factory = list)

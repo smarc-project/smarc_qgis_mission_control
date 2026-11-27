@@ -29,7 +29,7 @@ from qgis.PyQt.QtGui import QColor
 from ..compat import StrEnum, assert_never
 from ..domain.missionplan import MissionPlan
 from ..domain.tasks import Task
-from ..domain.taskspatial import iterTaskWaypoints
+from ..domain.taskspatial import isTaskAreaCorner, iterTaskWaypoints
 from ..domain.waypoints import Waypoint
 from .MissionAreas import MissionAreas
 from .MissionTracks import MissionTracks
@@ -97,8 +97,10 @@ class MissionLayerBridge(QObject):
         self._initializeLayers(plan.uuid)
         self._populateLayers(plan)
 
+        # Area corners have no tolerance, so their tip stays empty
         self.waypointLayer.setMapTipTemplate(
-            '<b>Tolerance:</b> [% "tolerance" %] m'
+            '[% CASE WHEN "tolerance" IS NOT NULL '
+            'THEN \'<b>Tolerance:</b> \' || "tolerance" || \' m\' END %]'
         )
 
     def _setupLayerGroup(self, planUuid: UUID) -> None:
@@ -273,16 +275,33 @@ class MissionLayerBridge(QObject):
     def _importTask(self, task: Task) -> None:
         # Tasks without waypoints currently have no map presence
         for waypoint in iterTaskWaypoints(task):
-            self._importWaypoint(task.uuid, task.description, waypoint)
+            self._importWaypoint(
+                task.uuid,
+                task.description,
+                waypoint,
+                isTaskAreaCorner(task, waypoint.uuid),
+            )
 
-    def _importWaypoint(self, taskUuid: UUID, taskDescription: str, waypoint: Waypoint) -> None:
-        feat = self._waypointToFeature(taskUuid, taskDescription, waypoint)
+    def _importWaypoint(self,
+                        taskUuid: UUID,
+                        taskDescription: str,
+                        waypoint: Waypoint,
+                        isAreaCorner: bool) -> None:
+        feat = self._waypointToFeature(taskUuid, taskDescription, waypoint, isAreaCorner)
         self.waypointLayer.dataProvider().addFeature(feat)
 
         self._fidToWaypointUuid[feat.id()] = waypoint.uuid
         self._waypointUuidToFid[waypoint.uuid] = feat.id()
 
-    def _waypointToFeature(self, taskUuid: UUID, taskDescription: str, waypoint: Waypoint) -> QgsFeature:
+    def _waypointToFeature(self,
+                           taskUuid: UUID,
+                           taskDescription: str,
+                           waypoint: Waypoint,
+                           isAreaCorner: bool) -> QgsFeature:
+        """
+        A point feature for the waypoint. An area corner is never driven to, so it gets
+        no tolerance: the ring and the map tip stay off for it.
+        """
         feat = QgsFeature(self.waypointLayer.fields())
         point = QgsPointXY(waypoint.longitude, waypoint.latitude)
         geom = QgsGeometry.fromPointXY(point)
@@ -290,7 +309,7 @@ class MissionLayerBridge(QObject):
         feat.setAttribute('task-uuid', str(taskUuid))
         feat.setAttribute('task-description', str(taskDescription))
         feat.setAttribute('waypoint-uuid', str(waypoint.uuid))
-        feat.setAttribute('tolerance', float(waypoint.tolerance))
+        feat.setAttribute('tolerance', None if isAreaCorner else float(waypoint.tolerance))
 
         return feat
 
@@ -478,7 +497,7 @@ class MissionLayerBridge(QObject):
         else:
             qgs.removeMapLayer(layerId)
 
-        for layer in (self.tracks._layer, self.areas.layer()):
+        for layer in (self.tracks._layer, self.areas.layer):
             try:
                 layerId = layer.id()
             except RuntimeError:

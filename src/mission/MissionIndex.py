@@ -74,7 +74,7 @@ class MissionIndex:
         del self.waypointMap[waypointUuid]
         del self.waypointTaskMap[waypointUuid]
 
-    def previousWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+    def previousRouteWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
         """The waypoint before this one on the vehicle's route; None for an area corner."""
         task = self.taskByWaypointUuid(waypointUuid)
         waypoint = self.waypointByUuid(waypointUuid)
@@ -106,7 +106,7 @@ class MissionIndex:
             # Previous waypoint on same task
             return waypoints[index - 1]
 
-    def nextWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
+    def nextRouteWaypointByUuid(self, waypointUuid: UUID) -> Waypoint | None:
         """The waypoint after this one on the vehicle's route; None for an area corner."""
         task = self.taskByWaypointUuid(waypointUuid)
         waypoint = self.waypointByUuid(waypointUuid)
