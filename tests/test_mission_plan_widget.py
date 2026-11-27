@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from qgis.PyQt.QtCore import Qt
 
 from src.domain.missionplan import GroupKind, MissionPlan, TaskGroup
@@ -260,9 +262,16 @@ def _start_move(table):
     return move
 
 
-def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path):
+def _start_rotate(table):
+    rotate = table.ui.buttonRotateWaypoints.defaultAction()
+    rotate.setChecked(True)
+    return rotate
+
+
+@pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
+def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
-    action = _start_move(table)
+    action = start_tool(table)
     assert canvas.mapTool() is not users_tool
     root = widget.taskListModel.index(0, 0)
 
@@ -272,9 +281,10 @@ def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path):
     assert canvas.mapTool() is users_tool
 
 
-def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Path):
+@pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
+def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
-    action = _start_move(table)
+    action = start_tool(table)
     root = widget.taskListModel.index(0, 0)
 
     widget.ui.taskList.setCurrentIndex(widget.taskListModel.index(2, 0, root))
@@ -284,9 +294,10 @@ def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Pat
     assert canvas.mapTool() is users_tool
 
 
-def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path):
+@pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
+def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
-    action = _start_move(table)
+    action = start_tool(table)
 
     doc.addTask("smarc-wait", "pause")
 
@@ -294,13 +305,14 @@ def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path):
     assert canvas.mapTool() is users_tool
 
 
-def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis_app, tmp_path: Path):
+@pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
+def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis_app, tmp_path: Path, start_tool):
     from qgis.core import QgsPointXY
 
     from src.mission.MissionMapManager import PickInitialWaypointTool
 
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
-    action = _start_move(table)
+    action = start_tool(table)
 
     doc.addTask("move-to", "here")
 

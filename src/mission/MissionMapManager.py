@@ -167,6 +167,7 @@ class MissionMapManager(QObject):
             self._selectLocationTool,
             self._pickInitialWaypointTool,
             self._addWaypointTool,
+            self._rotateTool,
         )
 
     def _startMapTool(self, tool: QgsMapTool, action: QAction | None) -> None:
@@ -277,8 +278,7 @@ class MissionMapManager(QObject):
     def onRotateWaypointsRequested(self, action: QAction, waypointUuids: list[UUID],
                                    active: bool) -> None:
         if not active:
-            self._canvas.setMapTool(self._previousTool)
-            self._rotateTool.setAction(None)
+            self._stopMapTool(self._rotateTool)
             return
         doc = self.parent().activeDocument()
         if doc is None:
@@ -292,10 +292,8 @@ class MissionMapManager(QObject):
         if len(positions) < 2:
             action.setChecked(False)
             return
-        self._previousTool = self._canvas.mapTool()
-        self._rotateTool.setAction(action)
         self._rotateTool.configure(positions)
-        self._canvas.setMapTool(self._rotateTool)
+        self._startMapTool(self._rotateTool, action)
 
     @pyqtSlot(dict)
     def onWaypointsRotated(self, positions: dict) -> None:

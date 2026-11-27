@@ -149,3 +149,23 @@ def test_rotate_is_off_when_it_would_turn_a_single_point(qgis_app, tmp_path: Pat
     doc.deleteWaypoint(task.waypoints[0].uuid)
     doc.deleteWaypoint(task.waypoints[0].uuid)
     assert not _rotate(table).isEnabled()
+
+
+def test_rotating_after_adding_waypoints_hands_the_map_back_to_the_users_tool(qgis_app, tmp_path: Path):
+    context, doc, table, task = _open(tmp_path)
+    before = _positions(task)
+    canvas = _canvasOn(before)
+    pan = QgsMapToolPan(canvas)
+    canvas.setMapTool(pan)
+    add = table.ui.buttonAddWaypoint.defaultAction()
+    add.setChecked(True)
+
+    # Straight from Add Waypoint to Rotate, the way a new path gets laid out and turned.
+    _rotate(table).setChecked(True)
+    assert not add.isChecked()
+    _click(canvas, before[0][1] + 0.01, before[0][0])
+    _click(canvas, before[0][1], before[0][0] + 0.01)
+
+    assert _positions(task) != before
+    assert not add.isChecked()
+    assert canvas.mapTool() is pan
