@@ -387,3 +387,27 @@ def test_stopping_a_tool_after_the_users_tool_was_deleted_leaves_the_canvas_empt
 
     assert not move.isChecked()
     assert canvas.mapTool() is None
+
+
+def test_adding_a_path_while_add_waypoint_is_on_puts_the_next_waypoints_in_the_new_path(qgis_app, tmp_path: Path):
+    """Clemens's #120: after adding a path, map clicks still added waypoints to the previous one."""
+    from qgis.core import QgsPointXY
+
+    widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
+    first = doc.plan.leaves()[0]
+    first_count = len(first.waypoints)
+    add = _start_add(table)
+
+    doc.addTask("move-path", "new path")
+    qgis_app.processEvents()
+
+    # The old path's tool is off, so a click does not edit the old path.
+    assert not add.isChecked()
+    assert canvas.mapTool() is users_tool
+    # The editor now shows the new path; its Add Waypoint adds there.
+    new_path = doc.plan.leaves()[-1]
+    assert new_path.description == "new path"
+    _start_add(table)
+    doc.parent().mapManager.onAddWaypointToolMapClicked(QgsPointXY(18.1, 59.5), Qt.LeftButton)
+    assert len(first.waypoints) == first_count
+    assert len(new_path.waypoints) == 1
