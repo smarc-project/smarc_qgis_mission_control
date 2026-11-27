@@ -18,8 +18,8 @@ def upload(qgis_app, monkeypatch: pytest.MonkeyPatch):
     bar = SimpleNamespace(pushWarning=lambda title, text: warnings.append(text))
     monkeypatch.setattr(dock_module, "iface", SimpleNamespace(messageBar=lambda: bar))
     dock = MissionControlDockWidget.__new__(MissionControlDockWidget)
-    dock._fleetContext = SimpleNamespace(
-        mqtt=SimpleNamespace(onPublishMissionPlan=lambda plan, receivers: sent.append(plan)))
+    fleetTab = SimpleNamespace(sendPlanUnlessServerBusy=lambda plan, receivers: sent.append(plan))
+    dock.ui = SimpleNamespace(tabFleetControl=fleetTab)
 
     def call(plan: MissionPlan | None) -> tuple[list[MissionPlan], list[str]]:
         doc = None if plan is None else SimpleNamespace(plan=plan)

@@ -74,6 +74,8 @@ class FleetState(QObject):
         mqttService.vehicleSensorEvent.connect(self.onVehicleSensorEvent)
         mqttService.vehicleTaskStateEvent.connect(self.onVehicleTaskStateEvent)
         mqttService.vehicleHeard.connect(self.onVehicleHeard)
+        # A silent vehicle's unanswered commands are not awaited any longer.
+        self.vehicleExpired.connect(mqttService.forgetCommandsAwaitingReply)
 
     def vehicleState(self, vehicleTopic: str) -> VehicleState | None:
         return self._vehicles.get(vehicleTopic)

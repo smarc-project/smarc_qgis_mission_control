@@ -1,9 +1,11 @@
 from uuid import UUID
 
 from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-from qgis.PyQt.QtWidgets import QFrame, QWidget
+from qgis.PyQt.QtWidgets import QFrame, QMessageBox, QWidget
 
 from ...context.FleetState import FleetState
+from ...domain.missionplan import MissionPlan
+from ...domain.waraps import WaraPsExecutingTask, tasksBlockingPlan
 from ..generated.FleetControlWidgetUi import Ui_FleetControlWidget
 from .VehicleCardWidget import VehicleCardWidget
 
@@ -17,10 +19,13 @@ ABORT_MISSION_BUTTON_CLICKS_REQUIRED = 3
 
 class FleetControlWidget(QFrame):
     uploadMissionPlanRequested = pyqtSignal(set)
+    # The plan passed every check; publish it to these vehicles.
+    sendMissionPlanRequested = pyqtSignal(MissionPlan, set)
     skipTaskRequested = pyqtSignal(dict) # dict[str, UUID]: vehicleTopic → first task UUID
     pauseRequested = pyqtSignal(set)
     continueRequested = pyqtSignal(set)
     abortMissionRequested = pyqtSignal(set)
+    abortTasksRequested = pyqtSignal(dict) # dict[str, list[UUID]]: vehicleTopic → tasks to abort
     emergencyRequested = pyqtSignal(set)
     resetEmergencyRequested = pyqtSignal(set)
     clearTracksRequested = pyqtSignal()
@@ -30,6 +35,13 @@ class FleetControlWidget(QFrame):
 
         self._fleetState = fleetState
         self._mapManager = mapManager
+        # Overridden starts: vehicleTopic → (plan, the aborted tasks it waits out).
+        # The officer refuses the plan until those tasks leave tasks-executing.
+        self._plansAwaitingFreeServer: dict[
+            str, tuple[MissionPlan, list[WaraPsExecutingTask]]
+        ] = {}
+        # vehicleTopic → why its waiting plan was dropped, shown until the next upload to it.
+        self._droppedPlanReasons: dict[str, str] = {}
 
         self._selected: set[str] = set()
         self._collapsed: set[str] = set()
@@ -167,11 +179,136 @@ class FleetControlWidget(QFrame):
         hidden = len(self._vehicles) - len(shown)
         if hidden:
             text += f" · {hidden} silent, hidden"
+        for vehicleTopic, (_, aborted) in sorted(self._plansAwaitingFreeServer.items()):
+            servers = ", ".join(sorted({task.type for task in aborted}))
+            text += f" · {vehicleTopic.split('/')[-1]}: plan waits for {servers} to stop"
+        for vehicleTopic, reason in sorted(self._droppedPlanReasons.items()):
+            text += f" · {vehicleTopic.split('/')[-1]}: plan dropped, {reason}"
         self.ui.vehiclesSelectedLabel.setText(text)
 
     @pyqtSlot()
     def onUploadMissionPlanClicked(self):
         self.uploadMissionPlanRequested.emit(self._selected)
+
+    def sendPlanUnlessServerBusy(
+        self,
+        plan: MissionPlan,
+        vehicleTopics: set[str],
+    ) -> None:
+        # A new upload replaces any plan still waiting for these vehicles; uploading
+        # again and pressing Cancel is how the operator takes a waiting plan back.
+        replaced = {t for t in vehicleTopics if t in self._plansAwaitingFreeServer}
+        self._dropWaitingPlans(vehicleTopics, reason=None)
+        free: set[str] = set()
+        blocking: dict[str, list[WaraPsExecutingTask]] = {}
+        for vehicleTopic in vehicleTopics:
+            state = self._fleetState.vehicleState(vehicleTopic)
+            busy = tasksBlockingPlan(plan, state.executingTasks or []) if state else []
+            if busy:
+                blocking[vehicleTopic] = busy
+            else:
+                free.add(vehicleTopic)
+        # Free vehicles get the plan now; the officer would refuse it on the busy ones
+        # ("task already executing on ..."), so only those wait for the operator.
+        if free:
+            self.sendMissionPlanRequested.emit(plan, free)
+        if blocking and self._confirmOverride(free, blocking, replaced):
+            self._overrideBusyServers(plan, blocking)
+
+    def _confirmOverride(
+        self,
+        sent: set[str],
+        blocking: dict[str, list[WaraPsExecutingTask]],
+        replaced: set[str],
+    ) -> bool:
+        """Say which vehicles did not get the plan and why; True if the operator overrides."""
+        lines = []
+        if sent:
+            lines.append("Sent to " + ", ".join(sorted(t.split('/')[-1] for t in sent)) + ".")
+        for vehicleTopic, tasks in sorted(blocking.items()):
+            for task in tasks:
+                # "running" would repeat the line; other states (paused, aborted) are news.
+                status = "" if task.status == "running" else f" ({task.status})"
+                # A task started without a description (start-task allows it) is just "a task".
+                what = f"\u201c{task.description}\u201d" if task.description else "a task"
+                lines.append(
+                    f"Not sent to {vehicleTopic.split('/')[-1]}: its {task.type} server "
+                    f"is running {what}{status}."
+                )
+        if replaced:
+            names = ", ".join(sorted(t.split('/')[-1] for t in replaced))
+            lines.append(f"The plan already waiting for {names} is dropped.")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Action server busy")
+        box.setText("\n".join(lines))
+        several = sum(len(tasks) for tasks in blocking.values()) > 1
+        box.setInformativeText(
+            f"Override aborts the running {'tasks' if several else 'task'} and sends this plan "
+            f"once {'each vehicle reports its server' if len(blocking) > 1 else 'the vehicle reports the server'} free."
+        )
+        overrideButton = box.addButton("Override", QMessageBox.DestructiveRole)
+        box.setDefaultButton(box.addButton(QMessageBox.Cancel))
+        box.exec()
+        return box.clickedButton() is overrideButton
+
+    def _overrideBusyServers(
+        self,
+        plan: MissionPlan,
+        blocking: dict[str, list[WaraPsExecutingTask]],
+    ) -> None:
+        # The box was open for a while: only abort what the officer still lists. A task
+        # that ended meanwhile brings no later change, so each vehicle is tried at once.
+        toAbort: dict[str, list[UUID]] = {}
+        for vehicleTopic, confirmed in blocking.items():
+            if not self._fleetState.isActive(vehicleTopic):
+                self._droppedPlanReasons[vehicleTopic] = "vehicle went silent"
+                continue
+            state = self._fleetState.vehicleState(vehicleTopic)
+            listed = {task.uuid for task in (state.executingTasks if state else None) or []}
+            stillListed = [task for task in confirmed if task.uuid in listed]
+            self._plansAwaitingFreeServer[vehicleTopic] = (plan, stillListed)
+            if stillListed:
+                toAbort[vehicleTopic] = [task.uuid for task in stillListed]
+        if toAbort:
+            self.abortTasksRequested.emit(toAbort)
+        for vehicleTopic in list(self._plansAwaitingFreeServer):
+            self._startPlanIfServerFree(vehicleTopic)
+        self._refreshUiState()
+
+    def _startPlanIfServerFree(self, vehicleTopic: str) -> None:
+        pending = self._plansAwaitingFreeServer.get(vehicleTopic)
+        state = self._fleetState.vehicleState(vehicleTopic)
+        if pending is None or state is None:
+            return
+        plan, aborted = pending
+        executing = state.executingTasks or []
+        abortedUuids = {task.uuid for task in aborted}
+        # An aborted task stays in tasks-executing until its server answers the cancel.
+        if any(task.uuid in abortedUuids for task in executing):
+            return
+        del self._plansAwaitingFreeServer[vehicleTopic]
+        # The officer refuses by server, not by task: another task may hold it by now.
+        busy = tasksBlockingPlan(plan, executing)
+        if busy:
+            servers = ", ".join(sorted({task.type for task in busy}))
+            self._droppedPlanReasons[vehicleTopic] = f"{servers} busy again"
+        else:
+            self.sendMissionPlanRequested.emit(plan, {vehicleTopic})
+        self._refreshUiState()
+
+    def _dropWaitingPlans(self, vehicleTopics: set[str], reason: str | None) -> None:
+        """Forget the plans waiting for these vehicles, showing reason on the label.
+
+        With no reason (a new upload) an earlier drop's note goes too.
+        """
+        for vehicleTopic in vehicleTopics:
+            dropped = self._plansAwaitingFreeServer.pop(vehicleTopic, None)
+            if reason is None:
+                self._droppedPlanReasons.pop(vehicleTopic, None)
+            elif dropped is not None:
+                self._droppedPlanReasons[vehicleTopic] = reason
+        self._refreshUiState()
 
     @pyqtSlot()
     def onSkipTaskClicked(self):
@@ -195,6 +332,8 @@ class FleetControlWidget(QFrame):
     def onEmergencyButtonClicked(self):
         self._emergencyClickCounter += 1
         if self._emergencyClickCounter >= EMERGENCY_BUTTON_CLICKS_REQUIRED:
+            # Once the officer has stopped everything, a waiting plan would start by itself.
+            self._dropWaitingPlans(self._selected, reason="emergency")
             self.emergencyRequested.emit(self._selected)
             self._resetEmergencyClickCount()
         else:
@@ -206,6 +345,8 @@ class FleetControlWidget(QFrame):
     def onAbortMissionButtonClicked(self):
         self._abortMissionClickCounter += 1
         if self._abortMissionClickCounter >= ABORT_MISSION_BUTTON_CLICKS_REQUIRED:
+            # Once the officer has stopped everything, a waiting plan would start by itself.
+            self._dropWaitingPlans(self._selected, reason="mission aborted")
             self.abortMissionRequested.emit(self._selected)
             self._resetAbortMissionClickCount()
         else:
@@ -256,6 +397,7 @@ class FleetControlWidget(QFrame):
         state = self._fleetState.vehicleState(vehicleTopic)
         assert(state)
         self._vehicles[vehicleTopic].updateState(state)
+        self._startPlanIfServerFree(vehicleTopic)
 
     @pyqtSlot(str)
     def onVehicleExpired(self, vehicleTopic: str):
@@ -264,6 +406,8 @@ class FleetControlWidget(QFrame):
             return
         # A hidden vehicle must not stay selected, or commands would reach it unseen.
         card.setChecked(False)
+        # Nor may a plan held back by Override start on it unseen when it is heard again.
+        self._dropWaitingPlans({vehicleTopic}, reason="vehicle went silent")
         card.setVisible(False)
         self._restripe()
         self._refreshUiState()

@@ -92,6 +92,7 @@ class Ui_FleetControlWidget(object):
         self.verticalLayout = QtWidgets.QVBoxLayout(self.vehicleControls)
         self.verticalLayout.setObjectName("verticalLayout")
         self.vehiclesSelectedLabel = QtWidgets.QLabel(self.vehicleControls)
+        self.vehiclesSelectedLabel.setWordWrap(True)
         self.vehiclesSelectedLabel.setObjectName("vehiclesSelectedLabel")
         self.verticalLayout.addWidget(self.vehiclesSelectedLabel)
         self.vehicleControlsSeparator_2 = QtWidgets.QFrame(self.vehicleControls)
