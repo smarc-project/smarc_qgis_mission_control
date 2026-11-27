@@ -44,6 +44,7 @@ class FleetControlWidget(QFrame):
         self._fleetState.vehicleDiscovered.connect(self.addVehicle)
         self._fleetState.vehicleUpdated.connect(self.onVehicleUpdated)
         self._fleetState.vehicleExpired.connect(self.onVehicleExpired)
+        self._fleetState.vehicleReturned.connect(self.onVehicleReturned)
 
         self._emergencyButtonTimer = QTimer(self)
         self._emergencyButtonTimer.setSingleShot(True)
@@ -87,20 +88,24 @@ class FleetControlWidget(QFrame):
 
         self._refreshUiState()
 
+    def _shown(self) -> dict[str, VehicleCardWidget]:
+        """Cards of the vehicles that are not hidden for being silent."""
+        return {t: c for t, c in self._vehicles.items() if self._fleetState.isActive(t)}
+
     def selectAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setChecked(True)
 
     def deselectAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setChecked(False)
 
     def collapseAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setCollapsed(True)
 
     def expandAll(self):
-        for vehicle in self._vehicles.values():
+        for vehicle in self._shown().values():
             vehicle.setCollapsed(False)
 
     def onVehicleToggled(self, vehicle: str, value: bool):
@@ -123,20 +128,23 @@ class FleetControlWidget(QFrame):
         self._refreshUiState()
 
     def _refreshUiState(self):
-        if len(self._vehicles) == 0:
+        shown = self._shown()
+        selected = self._selected & shown.keys()
+        collapsed = self._collapsed & shown.keys()
+        if len(shown) == 0:
             # nothing is enabled if no cards are available
             self.ui.selectAllButton.setEnabled(False)
             self.ui.deselectAllButton.setEnabled(False)
             self.ui.collapseAllButton.setEnabled(False)
             self.ui.expandAllButton.setEnabled(False)
-            self.ui.clearTracksButton.setEnabled(False)
+            self.ui.clearTracksButton.setEnabled(bool(self._vehicles))
             self.ui.vehicleControls.setEnabled(False)
-            self.ui.vehiclesSelectedLabel.setText("No vehicles selected")
+            text = "No vehicles selected"
         else:
-            allSelected = len(self._selected) == len(self._vehicles)
-            someSelected = len(self._selected) != 0
-            allCollapsed = len(self._collapsed) == len(self._vehicles)
-            someCollapsed = len(self._collapsed) != 0
+            allSelected = len(selected) == len(shown)
+            someSelected = len(selected) != 0
+            allCollapsed = len(collapsed) == len(shown)
+            someCollapsed = len(collapsed) != 0
 
             self.ui.selectAllButton.setEnabled(not allSelected)
             self.ui.deselectAllButton.setEnabled(someSelected)
@@ -146,16 +154,20 @@ class FleetControlWidget(QFrame):
 
             self.ui.vehicleControls.setEnabled(someSelected)
             if allSelected:
-                text = f"All ({len(self._selected)}) vehicles selected"
-            elif len(self._selected) > 1:
-                text = f"{len(self._selected)} vehicles selected"
-            elif len(self._selected) == 1:
+                text = f"All ({len(selected)}) vehicles selected"
+            elif len(selected) > 1:
+                text = f"{len(selected)} vehicles selected"
+            elif len(selected) == 1:
                 text = "1 vehicle selected"
             else:
                 text = "No vehicles selected"
-            self.ui.vehiclesSelectedLabel.setText(text)
 
             self.ui.clearTracksButton.setEnabled(True)
+
+        hidden = len(self._vehicles) - len(shown)
+        if hidden:
+            text += f" · {hidden} silent, hidden"
+        self.ui.vehiclesSelectedLabel.setText(text)
 
     @pyqtSlot()
     def onUploadMissionPlanClicked(self):
@@ -219,7 +231,6 @@ class FleetControlWidget(QFrame):
         print("FleetControlWidget.addVehicle() called")
 
         card = VehicleCardWidget(vehicle, tasks, self.ui.vehicleList)
-        card.setProperty("odd", bool(len(self._vehicles) % 2))
         card.toggled.connect(lambda v: self.onVehicleToggled(vehicle, v))
         card.collapsedChanged.connect(
             lambda v: self.onVehicleCollapsedChanged(vehicle, v)
@@ -230,6 +241,7 @@ class FleetControlWidget(QFrame):
 
         self.ui.vehicleListVLayout.addWidget(card)
         self._vehicles[vehicle] = card
+        self._restripe()
 
         # Sync collapsed state with what the card initializes to
         if card.isCollapsed():
@@ -247,7 +259,27 @@ class FleetControlWidget(QFrame):
 
     @pyqtSlot(str)
     def onVehicleExpired(self, vehicleTopic: str):
-        ...
+        card = self._vehicles.get(vehicleTopic)
+        if card is None:
+            return
+        # A hidden vehicle must not stay selected, or commands would reach it unseen.
+        card.setChecked(False)
+        card.setVisible(False)
+        self._restripe()
+        self._refreshUiState()
+
+    @pyqtSlot(str)
+    def onVehicleReturned(self, vehicleTopic: str):
+        card = self._vehicles.get(vehicleTopic)
+        if card is None:
+            return
+        card.setVisible(True)
+        self._restripe()
+        self._refreshUiState()
+
+    def _restripe(self):
+        for i, card in enumerate(self._shown().values()):
+            card.setOdd(bool(i % 2))
 
     @pyqtSlot(str)
     def onVehicleHeartbeat(self, vehicleTopic: str):

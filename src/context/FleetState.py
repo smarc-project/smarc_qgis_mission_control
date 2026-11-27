@@ -1,8 +1,10 @@
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from qgis.core import QgsApplication
 
-from qgis.PyQt.QtCore import QObject, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.waraps import WaraPsExecutingTask
@@ -33,33 +35,91 @@ class VehicleState:
     mapColor: QColor = field(default_factory =
         lambda: QgsApplication.colorSchemeRegistry().fetchRandomStyleColor()
     )
+    # When any message from the vehicle last arrived, on FleetState's clock.
+    lastHeard: float = 0.0
+    # False while the vehicle has been silent longer than the inactive timeout.
+    active: bool = True
+
+# Seconds without any message before a vehicle counts as inactive.
+DEFAULT_INACTIVE_TIMEOUT = 60
+# How often silent vehicles are looked for.
+INACTIVE_CHECK_INTERVAL = 1000 # ms
+
 
 class FleetState(QObject):
     vehicleDiscovered = pyqtSignal(str)
+    # Heard nothing for the inactive timeout.
     vehicleExpired = pyqtSignal(str)
+    # Heard again after vehicleExpired.
+    vehicleReturned = pyqtSignal(str)
     vehicleUpdated = pyqtSignal(str)
     vehicleHeartbeat = pyqtSignal(str)
     
     _vehicles: dict[str, VehicleState]
 
-    def __init__(self, mqttService: MqttService, parent: QObject | None):
+    def __init__(self, mqttService: MqttService, parent: QObject | None,
+                 clock: Callable[[], float] = time.monotonic):
         super().__init__(parent)
 
         self._vehicles = {}
+        self._clock = clock
+        self._inactiveTimeout = DEFAULT_INACTIVE_TIMEOUT
+
+        self._inactiveTimer = QTimer(self)
+        self._inactiveTimer.setInterval(INACTIVE_CHECK_INTERVAL)
+        self._inactiveTimer.timeout.connect(self._updateActivity)
+        self._inactiveTimer.start()
 
         mqttService.vehicleHeartbeat.connect(self.onVehicleHeartbeat)
         mqttService.vehicleSensorEvent.connect(self.onVehicleSensorEvent)
         mqttService.vehicleTaskStateEvent.connect(self.onVehicleTaskStateEvent)
+        mqttService.vehicleHeard.connect(self.onVehicleHeard)
 
     def vehicleState(self, vehicleTopic: str) -> VehicleState | None:
         return self._vehicles.get(vehicleTopic)
+
+    def isActive(self, vehicleTopic: str) -> bool:
+        state = self._vehicles.get(vehicleTopic)
+        return state is None or state.active
+
+    def setInactiveTimeout(self, seconds: float) -> None:
+        """Expire vehicles silent for `seconds`; 0 never expires them."""
+        self._inactiveTimeout = max(0.0, float(seconds))
+        self._updateActivity()
+
+    @pyqtSlot()
+    def _updateActivity(self) -> None:
+        now = self._clock()
+        for vehicleTopic, state in self._vehicles.items():
+            active = (self._inactiveTimeout == 0
+                      or now - state.lastHeard < self._inactiveTimeout)
+            if active == state.active:
+                continue
+            state.active = active
+            if active:
+                self.vehicleReturned.emit(vehicleTopic)
+            else:
+                self.vehicleExpired.emit(vehicleTopic)
 
     def _ensureVehicle(self, vehicleTopic: str):
         if vehicleTopic not in self._vehicles:
             print(f'FleetState._ensureVehicle: vehicle discovered: {vehicleTopic}')
 
-            self._vehicles[vehicleTopic] = VehicleState()
+            self._vehicles[vehicleTopic] = VehicleState(lastHeard=self._clock())
             self.vehicleDiscovered.emit(vehicleTopic)
+            return
+        self.onVehicleHeard(vehicleTopic)
+
+    @pyqtSlot(str)
+    def onVehicleHeard(self, vehicleTopic: str):
+        """Any message counts, so a vehicle whose sensors are relayed stays active."""
+        state = self._vehicles.get(vehicleTopic)
+        if state is None:
+            return
+        state.lastHeard = self._clock()
+        if not state.active:
+            state.active = True
+            self.vehicleReturned.emit(vehicleTopic)
 
     @pyqtSlot(VehicleHeartbeatEvent)
     def onVehicleHeartbeat(self, event: VehicleHeartbeatEvent):
