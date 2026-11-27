@@ -113,10 +113,7 @@ class RotateWaypointsMapTool(QgsMapTool):
         self._clearPreview()
         self._startAngle = None
         # Releasing the button puts the previous map tool back (MissionMapManager).
-        if self.action() is not None:
-            self.action().setChecked(False)
-        else:
-            self.canvas().unsetMapTool(self)
+        self.action().setChecked(False)
 
     def canvasMoveEvent(self, e: QgsMapMouseEvent) -> None:
         if self._rotation is None or self._startAngle is None:

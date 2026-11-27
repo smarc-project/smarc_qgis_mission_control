@@ -1,6 +1,5 @@
-from pathlib import Path
-
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from qgis.gui import QgsMapCanvas, QgsMapTool
@@ -267,14 +266,15 @@ def _start_move(table: WaypointTableWidget) -> QAction:
     return move
 
 
-def _start_rotate(table):
+def _start_rotate(table: WaypointTableWidget) -> QAction:
     rotate = table.ui.buttonRotateWaypoints.defaultAction()
     rotate.setChecked(True)
     return rotate
 
 
 @pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
-def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
+def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path,
+        start_tool: Callable[[WaypointTableWidget], QAction]):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
     action = start_tool(table)
     assert canvas.mapTool() is not users_tool
@@ -287,7 +287,8 @@ def test_selecting_another_path_stops_the_tool(qgis_app, tmp_path: Path, start_t
 
 
 @pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
-def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
+def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Path,
+        start_tool: Callable[[WaypointTableWidget], QAction]):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
     action = start_tool(table)
     root = widget.taskListModel.index(0, 0)
@@ -300,7 +301,8 @@ def test_selecting_a_task_of_another_type_stops_the_tool(qgis_app, tmp_path: Pat
 
 
 @pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
-def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
+def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path,
+        start_tool: Callable[[WaypointTableWidget], QAction]):
     widget, doc, canvas, users_tool, table = _editing_first_path(qgis_app, tmp_path)
     action = start_tool(table)
 
@@ -311,7 +313,8 @@ def test_adding_a_task_stops_the_tool(qgis_app, tmp_path: Path, start_tool):
 
 
 @pytest.mark.parametrize("start_tool", [_start_move, _start_rotate])
-def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis_app, tmp_path: Path, start_tool):
+def test_adding_a_map_click_task_stops_the_tool_and_then_hands_the_map_back(qgis_app, tmp_path: Path,
+        start_tool: Callable[[WaypointTableWidget], QAction]):
     from qgis.core import QgsPointXY
 
     from src.mission.MissionMapManager import PickInitialWaypointTool
