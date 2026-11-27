@@ -155,7 +155,7 @@ class MissionLayerBridge(QObject):
         )
         markerSymbolLayer.setDataDefinedProperty(
             QgsSimpleMarkerSymbolLayer.PropertyStrokeWidth,
-            QgsProperty.fromExpression('coalesce("tolerance",0) * 4') # such that stroke radius matches tolerance
+            QgsProperty.fromExpression('coalesce("tolerance",0) * 2') # such that stroke radius matches tolerance
         )
 
         return QgsSingleSymbolRenderer(symbol)
