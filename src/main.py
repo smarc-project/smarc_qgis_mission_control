@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QSizePolicy, QWidget
 
 from .context.FleetContext import FleetContext
+from .context.FleetMapManager import DEFAULT_TRACK_LENGTH
 from .mission.MissionContext import MissionContext
 from .ui.NativeChrome import NativeChrome
 from .ui.widgets.MissionControlDockWidget import MissionControlDockWidget
@@ -72,6 +73,7 @@ class SMaRCMissionControlPlugin(QObject):
 
         self.fleetContext = FleetContext(self)
         self.missionContext = MissionContext(self)
+        self._applyFleetSettings()
 
         # TODO: this is a hack to easily access the plugin instance
         iface.smarcmcp = self
@@ -275,6 +277,10 @@ class SMaRCMissionControlPlugin(QObject):
                         "qgis": {
                             "default-zoom-level": 25000
                         },
+                        "fleet": {
+                            # Positions kept per vehicle on the map; 0 keeps them all.
+                            "track-length": DEFAULT_TRACK_LENGTH,
+                        },
                 }
     def _mergeSettings(self, defaults, loaded):
         merged = dict(loaded)
@@ -320,6 +326,13 @@ class SMaRCMissionControlPlugin(QObject):
         # not possible if no mqtt connection established yet
         self.fleetContext.mqtt.setSenderId(
             self.user_settings.get("wara-ps", {}).get("sender", "QGIS-MissionControl")
+        )
+        self._applyFleetSettings()
+
+    def _applyFleetSettings(self):
+        fleet = self.user_settings.get("fleet", {})
+        self.fleetContext.mapManager.setTrackLength(
+            fleet.get("track-length", DEFAULT_TRACK_LENGTH)
         )
         
     @pyqtSlot(bool)
