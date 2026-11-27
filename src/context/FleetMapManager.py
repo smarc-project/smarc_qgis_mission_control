@@ -6,6 +6,7 @@ from qgis.core import (
     QgsFeature,
     QgsField,
     QgsGeometry,
+    QgsMapUnitScale,
     QgsMarkerSymbol,
     QgsPointXY,
     QgsProject,
@@ -43,6 +44,26 @@ class VehicleMapObject:
 
 # Positions kept per vehicle; at one position a second that is about a quarter of an hour.
 DEFAULT_TRACK_LENGTH = 1000
+
+# Markers are sized in meters so they grow and shrink with the map, but held
+# between these sizes on screen: big enough to find a vehicle zoomed out, small
+# enough that a few vehicles side by side do not cover the map zoomed in.
+VEHICLE_MARKER_MIN_SIZE_MM = 4.0
+VEHICLE_MARKER_MAX_SIZE_MM = 10.0
+# Track points stay smaller than the vehicle, so a long track does not bury it.
+TRACK_POINT_MIN_SIZE_MM = 1.5
+TRACK_POINT_MAX_SIZE_MM = 4.0
+
+
+def _screenSizeLimits(minSizeMM: float, maxSizeMM: float) -> QgsMapUnitScale:
+    """QGIS's own clamp for a map-unit size: never below or above these screen millimeters."""
+    limits = QgsMapUnitScale()
+    limits.minSizeMMEnabled = True
+    limits.minSizeMM = minSizeMM
+    limits.maxSizeMMEnabled = True
+    limits.maxSizeMM = maxSizeMM
+    return limits
+
 
 class FleetMapManager(QObject):
     vehicleDiscovered = pyqtSignal(str)
@@ -159,6 +180,10 @@ class FleetMapManager(QObject):
         svg_layer = QgsSvgMarkerSymbolLayer(svg)
         svg_layer.setSize(size)
         svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits) # alt. QgsUnitTypes.RenderMillimeters
+        svg_layer.setSizeMapUnitScale(_screenSizeLimits(
+            VEHICLE_MARKER_MIN_SIZE_MM,
+            VEHICLE_MARKER_MAX_SIZE_MM,
+        ))
         svg_layer.setFillColor(color)
         svg_layer.setStrokeColor(color.darker(150))
         svg_layer.setStrokeWidth(0.2)
@@ -177,6 +202,10 @@ class FleetMapManager(QObject):
         # or: trail_layer = QgsSimpleMarkerSymbolLayer(QgsSimpleMarkerSymbolLayer.Shape.Circle)
         trail_layer.setSize(6)
         trail_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+        trail_layer.setSizeMapUnitScale(_screenSizeLimits(
+            TRACK_POINT_MIN_SIZE_MM,
+            TRACK_POINT_MAX_SIZE_MM,
+        ))
         trail_layer.setColor(color)
         trail_layer.setStrokeColor(color.darker(150))
         trail_layer.setDataDefinedProperty(
@@ -186,7 +215,7 @@ class FleetMapManager(QObject):
             QgsSymbolLayer.PropertyLayerEnabled, QgsProperty.fromExpression('NOT "is-current"')
         )
 
-        # Keep marker size fixed regardless of map zoom
+        # Only matters for a data-defined size; the screen limits above set the zoom behaviour.
         symbol.setScaleMethod(QgsSymbol.ScaleArea)
 
         symbol.appendSymbolLayer(svg_layer)

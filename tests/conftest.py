@@ -20,8 +20,10 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 import pytest
 from qgis.core import QgsApplication
-from qgis.gui import QgsMapCanvas
+from qgis.gui import QgsMapCanvas, QgsRubberBand
+from qgis.PyQt.QtCore import QObject, pyqtSignal
 from qgis.PyQt.QtGui import QFont, QFontDatabase
+from qgis.PyQt.QtWidgets import QMainWindow
 
 
 class _Iface:
@@ -58,3 +60,48 @@ qgis.utils.iface = _Iface(_CANVAS)
 @pytest.fixture(scope="session")
 def qgis_app():
     yield _APP
+
+
+# After the iface above: FleetMapManager binds it at import.
+from src.context.FleetMapManager import FleetMapManager
+from src.context.FleetState import VehicleState
+
+
+class _Fleet(QObject):
+    """FleetState's signals and states, moved by hand instead of by MQTT."""
+    vehicleDiscovered = pyqtSignal(str)
+    vehicleUpdated = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self._states: dict[str, VehicleState] = {}
+
+    def vehicleState(self, topic: str) -> VehicleState | None:
+        return self._states.get(topic)
+
+    def move(self, topic: str, lon: float, lat: float, heading: float = 0.0) -> None:
+        """Put `topic` at longitude 11 + `lon`, discovering it on its first move."""
+        if topic not in self._states:
+            self._states[topic] = VehicleState()
+            self.vehicleDiscovered.emit(topic)
+        state = self._states[topic]
+        state.longitude, state.latitude, state.heading = 11.0 + lon, lat, heading
+        self.vehicleUpdated.emit(topic)
+
+
+@pytest.fixture
+def fleet(qgis_app, monkeypatch):
+    """A FleetMapManager on the test canvas, fed by a hand-moved fleet."""
+    window = QMainWindow()
+    window.show()
+    monkeypatch.setattr(qgis.utils.iface, "mainWindow", lambda: window, raising=False)
+    fleet = _Fleet()
+    manager = FleetMapManager(fleet, None)
+    yield fleet, manager
+    manager.cleanup()
+    # The plugin's unload takes the track lines off the canvas; do the same here.
+    scene = qgis.utils.iface.mapCanvas().scene()
+    for item in scene.items():
+        if isinstance(item, QgsRubberBand):
+            scene.removeItem(item)
+    window.close()
