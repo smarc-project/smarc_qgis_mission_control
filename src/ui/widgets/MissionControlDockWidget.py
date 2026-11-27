@@ -231,10 +231,15 @@ class MissionControlDockWidget(QgsDockWidget):
         if doc is None:
             iface.messageBar().pushWarning(None, "No mission plan is open; nothing was sent.")
             return
-        # The mission goes out as one seq of its tasks. An empty seq is refused by the
-        # officer as an unfinished plan, so it is not sent at all.
+        # The officer refuses a TST with an empty seq or conc anywhere, as a plan that was
+        # sent before it was finished, so such a plan is not sent at all.
         if not doc.plan.tasks:
             iface.messageBar().pushWarning(None, "The mission plan has no tasks; nothing was sent.")
+            return
+        empty = doc.plan.empty_groups()
+        if empty:
+            names = ", ".join(f'"{group.description}"' for group in empty)
+            iface.messageBar().pushWarning(None, f"Empty group {names} in the mission plan; nothing was sent.")
             return
         self._fleetContext.mqtt.onPublishMissionPlan(doc.plan, receivers)
 
