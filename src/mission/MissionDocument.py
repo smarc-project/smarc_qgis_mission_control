@@ -130,8 +130,6 @@ class MissionDocument(QObject):
         self.missionChanged.emit()
 
     def addGroup(self, kind: GroupKind, owner: TaskGroup | None = None) -> TaskGroup:
-        # owner is the group the new one goes into, None for the plan's root. Here `group`
-        # already names the new group, so the task methods' `group` argument is `owner`.
         group = TaskGroup(kind=kind, description=kind.label)
         cmd = AddGroupUndoCommand(self, group, owner)
         with self.layerBridge.customEditCommand(f"Add {kind.label.lower()}"):
@@ -182,14 +180,14 @@ class MissionDocument(QObject):
     # TODO: accept index in addTask?
     def addTask(self, taskType: str, description: str,
                 taskUuid: UUID | None = None,
-                group: TaskGroup | None = None) -> None:
+                owner: TaskGroup | None = None) -> None:
         taskCls = TaskRegistry.lookup(taskType)
         requiredFields = taskCls.requiredFields()
 
         if not requiredFields:
             # Task can be added directly
             task = taskCls(description=description, uuid=taskUuid or uuid4())
-            self.addTaskInstance(task, group)
+            self.addTaskInstance(task, owner)
             return
 
         if len(requiredFields) == 1:
@@ -204,7 +202,7 @@ class MissionDocument(QObject):
                     description = description,
                     taskUuid = taskUuid or uuid4(),
                     waypointUuid = uuid4(),
-                    parentUuid = None if group is None else group.uuid,
+                    ownerUuid = None if owner is None else owner.uuid,
                 )
                 # TODO: get mapManager from parent
                 self.parent().mapManager.pickInitialWaypoint(pending)
@@ -228,11 +226,11 @@ class MissionDocument(QObject):
             uuid = pendingTask.taskUuid,
             **{pendingTask.fieldName: waypoint}
         )
-        group = self.plan.findGroup(pendingTask.parentUuid)
-        self.addTaskInstance(task, group)
+        owner = self.plan.findGroup(pendingTask.ownerUuid)
+        self.addTaskInstance(task, owner)
 
-    def addTaskInstance(self, task: Task, group: TaskGroup | None = None) -> None:
-        cmd = AddTaskUndoCommand(self, task, group)
+    def addTaskInstance(self, task: Task, owner: TaskGroup | None = None) -> None:
+        cmd = AddTaskUndoCommand(self, task, owner)
 
         text = f"Add task {task.type} ({task.description})"
         with self.layerBridge.customEditCommand(text):
@@ -242,13 +240,13 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _container(self, groupUuid: UUID | None) -> list[MissionNode]:
-        return self.plan.children_of(self.plan.findGroup(groupUuid))
+    def _container(self, ownerUuid: UUID | None) -> list[MissionNode]:
+        return self.plan.children_of(self.plan.findGroup(ownerUuid))
 
-    def _addTaskAt(self, task: Task, index: int, groupUuid: UUID | None = None) -> None:
+    def _addTaskAt(self, task: Task, index: int, ownerUuid: UUID | None = None) -> None:
         self.beforeTaskAdded.emit(task.uuid, index)
 
-        self._container(groupUuid).insert(index, task)
+        self._container(ownerUuid).insert(index, task)
         self.index.registerTask(task)
 
         self.taskAdded.emit(task.uuid, index)
@@ -268,8 +266,8 @@ class MissionDocument(QObject):
             self._keepalive_undo.append(cmd)
             self.layerBridge.waypointLayer.undoStack().push(cmd)
 
-    def _deleteTaskAt(self, index: int, groupUuid: UUID | None = None) -> None:
-        container = self._container(groupUuid)
+    def _deleteTaskAt(self, index: int, ownerUuid: UUID | None = None) -> None:
+        container = self._container(ownerUuid)
         task = container[index]
 
         # Listeners still need the task in the plan to find its neighbours.

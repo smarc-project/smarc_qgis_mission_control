@@ -120,7 +120,7 @@ def test_a_map_click_task_lands_in_the_selected_group(qgis_app, tmp_path: Path):
         description="there",
         taskUuid=uuid4(),
         waypointUuid=uuid4(),
-        parentUuid=group.uuid,
+        ownerUuid=group.uuid,
     )
     doc.addPendingWaypointTask(pending, QgsPointXY(18.07, 59.35))
     assert doc.plan.tasks[0].children[0].description == "there"

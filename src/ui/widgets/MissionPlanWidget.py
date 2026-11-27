@@ -215,7 +215,7 @@ class MissionPlanWidget(QWidget):
             return
 
         try:
-            doc.addTask(dialog.type(), dialog.description(), group=self._selected_group())
+            doc.addTask(dialog.type(), dialog.description(), owner=self._selected_group())
         except UnsupportedTaskCreationError as error:
             QMessageBox.warning(
                 self,

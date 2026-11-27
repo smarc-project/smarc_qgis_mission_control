@@ -107,7 +107,8 @@ class PendingWaypointTask:
     description: str
     taskUuid: UUID
     waypointUuid: UUID
-    parentUuid: UUID | None = None
+    # The group the task goes into, None for the plan's root.
+    ownerUuid: UUID | None = None
 
 
 class UnsupportedTaskCreationError(ValueError):
