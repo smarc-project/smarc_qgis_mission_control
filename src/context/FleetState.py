@@ -126,8 +126,11 @@ class FleetState(QObject):
         self._ensureVehicle(event.vehicleTopic)
 
         state = self._vehicles[event.vehicleTopic]
-        state.mode = event.mode
-      
+        if state.mode != event.mode:
+            state.mode = event.mode
+            # The cards show the mode, and they redraw on vehicleUpdated.
+            self.vehicleUpdated.emit(event.vehicleTopic)
+
         # TODO: propagate vehicle heartbeat in some way?
         self.vehicleHeartbeat.emit(event.vehicleTopic)
         
