@@ -273,6 +273,8 @@ class FleetMapManager(QObject):
 
         self._waypointLayer.dataProvider().addFeature(feat)
         vehicle.trackRubberBand.addPoint(point)
+        # addPoint shows the band again; an unchecked vehicle's track stays hidden.
+        vehicle.trackRubberBand.setVisible(self._isShownOnMap(vehicleTopic))
         vehicle.fids.append(feat.id())
         self._trimTrack(vehicle)
         self._waypointLayer.triggerRepaint()
@@ -298,8 +300,18 @@ class FleetMapManager(QObject):
         vehicle.trackRubberBand.updatePosition()
         vehicle.trackRubberBand.update()
 
+    def _isShownOnMap(self, vehicleTopic: str) -> bool:
+        """Whether the vehicle is checked in the live view.
+
+        The vehicle's renderer category keeps that, so the track reads it
+        from there instead of keeping a second copy.
+        """
+        renderer = self._waypointLayer.renderer()
+        catIdx = renderer.categoryIndexForLabel(vehicleTopic)
+        return catIdx < 0 or renderer.categories()[catIdx].renderState()
+
     @pyqtSlot(str, bool)
-    def onShowOnMapChanged(self, vehicleTopic: str, state: bool):
+    def onShowOnMapChanged(self, vehicleTopic: str, shown: bool) -> None:
         if self._waypointLayer is None:
             print("Error: Waypoint layer not initialized on map changed!")
             return
@@ -308,8 +320,13 @@ class FleetMapManager(QObject):
         if catIdx < 0:
             # TODO: should this be logged?
             return
-        self._waypointLayer.renderer().updateCategoryRenderState(catIdx, state)
+        # The category holds the marker and the older trail points.
+        self._waypointLayer.renderer().updateCategoryRenderState(catIdx, shown)
         self._waypointLayer.triggerRepaint()
+        # The track line is a canvas item, not a layer feature, so it hides apart.
+        vehicle = self._vehicles.get(vehicleTopic)
+        if vehicle is not None:
+            vehicle.trackRubberBand.setVisible(shown)
 
     @pyqtSlot(str, QColor)
     def onMapColorChanged(self, vehicleTopic: str, color: QColor):

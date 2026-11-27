@@ -50,8 +50,9 @@ class VehicleLiveViewWidget(QWidget):
         self.setCollapsed(True)
 
         # Change header colors when the checkbox is toggled
+        # Starts checked (the .ui box and _checked): FleetMapManager draws a new
+        # vehicle, so the row has to say it is on the map.
         self.ui.showOnMapCheckBox.toggled.connect(self.setChecked)
-        self.setChecked(False)
 
         self.heartbeat_gif = QMovie(":/custom_icons/heartbeat.gif")  # if using Qt resources
         self.ui.gifLabel.setFixedSize(32, 32)

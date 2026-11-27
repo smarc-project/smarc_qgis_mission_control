@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import qgis.utils
 from qgis.core import QgsProject
@@ -8,6 +10,8 @@ from qgis.PyQt.QtWidgets import QMainWindow
 
 from src.context.FleetMapManager import FleetMapManager
 from src.context.FleetState import VehicleState
+from src.ui.widgets.LiveViewWidget import LiveViewWidget
+from src.ui.widgets.VehicleLiveViewWidget import VehicleLiveViewWidget
 
 SAM = "waraps/unit/subsurface/simulation/sam1"
 LOLO = "waraps/unit/subsurface/simulation/lolo1"
@@ -16,6 +20,10 @@ LOLO = "waraps/unit/subsurface/simulation/lolo1"
 class _Fleet(QObject):
     vehicleDiscovered = pyqtSignal(str)
     vehicleUpdated = pyqtSignal(str)
+    # The live view listens to these too; these vehicles never go silent.
+    vehicleExpired = pyqtSignal(str)
+    vehicleReturned = pyqtSignal(str)
+    vehicleHeartbeat = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -23,6 +31,9 @@ class _Fleet(QObject):
 
     def vehicleState(self, topic):
         return self._states.get(topic)
+
+    def isActive(self, topic: str) -> bool:
+        return True
 
     def move(self, topic, lon, lat):
         if topic not in self._states:
@@ -110,3 +121,62 @@ def test_track_restarts_cleanly_after_clear(fleet):
 
     assert _track(SAM) == [(8.0, False), (9.0, True)]
     assert _bandPoints() == 2
+
+
+def _visibleBands() -> int:
+    """Track lines on the canvas that are drawn."""
+    scene = qgis.utils.iface.mapCanvas().scene()
+    return sum(1 for i in scene.items() if isinstance(i, QgsRubberBand) and i.isVisible())
+
+
+def _markersShown(topic: str) -> bool:
+    [layer] = QgsProject.instance().mapLayersByName("SMaRCVehiclePositionLayer")
+    renderer = layer.renderer()
+    return renderer.categories()[renderer.categoryIndexForLabel(topic)].renderState()
+
+
+def test_unchecking_a_vehicle_hides_its_track_and_checking_brings_it_back(fleet):
+    states, manager = fleet
+    for lon in range(3):
+        states.move(SAM, float(lon), 59.0)
+
+    manager.onShowOnMapChanged(SAM, False)
+    assert not _markersShown(SAM)
+    assert _visibleBands() == 0
+
+    manager.onShowOnMapChanged(SAM, True)
+    assert _markersShown(SAM)
+    assert _visibleBands() == 1
+
+
+def test_an_unchecked_vehicle_that_moves_keeps_its_track_hidden(fleet):
+    states, manager = fleet
+    states.move(SAM, 0.0, 59.0)
+    states.move(LOLO, 0.0, 58.0)
+
+    manager.onShowOnMapChanged(SAM, False)
+    states.move(SAM, 1.0, 59.0)
+    states.move(LOLO, 1.0, 58.0)
+
+    # Only LOLO's line is drawn.
+    assert _visibleBands() == 1
+    manager.clearAllVehicleMarkers()
+    states.move(SAM, 2.0, 59.0)
+    assert _visibleBands() == 0
+
+
+def test_a_new_vehicle_starts_checked_in_the_live_view_and_shown_on_the_map(fleet):
+    states, manager = fleet
+    panel = LiveViewWidget(SimpleNamespace(state=states, mapManager=manager))
+    states.move(SAM, 0.0, 59.0)
+
+    [row] = panel.findChildren(VehicleLiveViewWidget)
+    assert row.isChecked() and row.ui.showOnMapCheckBox.isChecked()
+    assert _markersShown(SAM)
+    assert not panel.ui.selectAllButton.isEnabled()
+    assert panel.ui.deselectAllButton.isEnabled()
+
+    # So the first click on the box takes the vehicle off the map.
+    row.ui.showOnMapCheckBox.click()
+    assert not _markersShown(SAM)
+    assert _visibleBands() == 0
