@@ -57,6 +57,8 @@ class MqttService(QObject):
     # Any message under a vehicle's topic except commands sent to it, including ones relayed for it by
     # another unit (e.g. surface units filling in an underwater vehicle's sensors).
     vehicleHeard = pyqtSignal(str)
+    # vehicleTopic, command ("start-tst", "signal-task", ...), the officer's reason.
+    commandRefused = pyqtSignal(str, str, str)
 
     _client: mqtt.Client | None
     _context: str
@@ -72,6 +74,9 @@ class MqttService(QObject):
         self._vehicles: dict[str, dict] = {}
         self._connect_rc = None
         self._senderId = "QGIS-MissionControl"  # default, overridable via setSenderId()
+        # com-uuid → command, for our own commands the officer has not answered yet.
+        # Its replies share the topic with replies to other operators' commands.
+        self._commandsAwaitingReply: dict[str, str] = {}
 
         self._connect_event = threading.Event()
 
@@ -225,9 +230,27 @@ class MqttService(QObject):
                 tasksExecuting=tasksExecuting,
             )
             self.vehicleTaskStateEvent.emit(event)
+        elif vehicleSubtopic in ('/tst/response', '/exec/response'):
+            self._readReply(vehicleTopic, message.payload)
         else:
             # unsupported vehicle subtopic!
             ...
+
+    def _publishCommand(self, topic: str, data: dict) -> None:
+        self._commandsAwaitingReply[data['com-uuid']] = data['command']
+        self._client.publish(topic, json.dumps(data))
+
+    def _readReply(self, vehicleTopic: str, payload: bytes) -> None:
+        """Report a refusal of one of our commands; "accepted", "ok" and "pong" stay quiet."""
+        data = json.loads(payload)
+        # A start-task reply has no "response", only the started task's status.
+        if 'response' not in data:
+            return
+        command = self._commandsAwaitingReply.pop(data.get('response-to'), None)
+        if command is None:
+            return
+        if data['response'] not in ('accepted', 'ok', 'pong'):
+            self.commandRefused.emit(vehicleTopic, command, data['response'])
 
     @pyqtSlot(MissionPlan, set)
     def onPublishMissionPlan(self, plan: MissionPlan, vehicleTopics: set[str]):
@@ -255,7 +278,7 @@ class MqttService(QObject):
             "com-uuid": str(uuid4()),
             "sender": self._senderId,
         }
-        self._client.publish(topic, json.dumps(data))
+        self._publishCommand(topic, data)
 
     @pyqtSlot(set)
     def onEmergencySignal(self, vehicleTopics: set[str]):
@@ -279,7 +302,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._client.publish(topic, json.dumps(data))
+        self._publishCommand(topic, data)
 
     @pyqtSlot(set)
     def onResetEmergencySignal(self, vehicleTopics: set[str]):
@@ -303,7 +326,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._client.publish(topic, json.dumps(data))
+        self._publishCommand(topic, data)
 
     @pyqtSlot(set)
     def onSkipTaskSignal(self, targets: dict):
@@ -340,7 +363,7 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._client.publish(topic, json.dumps(data))
+        self._publishCommand(topic, data)
 
     @pyqtSlot(set)
     def onAbortMissionSignal(self, vehicleTopics: set[str]):
@@ -364,4 +387,4 @@ class MqttService(QObject):
             'com-uuid': str(uuid4()),
             'sender': self._senderId,
         }
-        self._client.publish(topic, json.dumps(data))
+        self._publishCommand(topic, data)

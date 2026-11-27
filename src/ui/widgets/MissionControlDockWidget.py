@@ -8,6 +8,7 @@ from qgis.PyQt.QtCore import QCoreApplication, pyqtSlot
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
 
 from ...context.FleetContext import FleetContext
+from ...domain.missionplan import MissionPlan
 from ...mission.MissionContext import MissionContext
 from ...mission.MissionDocument import MissionDocument
 from ..generated.MissionControlDockWidgetUi import Ui_MissionControlDockWidget
@@ -45,9 +46,8 @@ class MissionControlDockWidget(QgsDockWidget):
             self.ui.tabWidget
         )
         self.ui.tabFleetControl.uploadMissionPlanRequested.connect(self.onUploadMissionPlanRequested)
-        self.ui.tabFleetControl.sendMissionPlanRequested.connect(
-            self._fleetContext.mqtt.onPublishMissionPlan
-        )
+        self.ui.tabFleetControl.sendMissionPlanRequested.connect(self.onSendMissionPlanRequested)
+        self._fleetContext.mqtt.commandRefused.connect(self.onCommandRefused)
         self.ui.tabFleetControl.abortTasksRequested.connect(
             self._fleetContext.mqtt.onAbortTasksSignal
         )
@@ -237,19 +237,38 @@ class MissionControlDockWidget(QgsDockWidget):
         if doc is None:
             iface.messageBar().pushWarning(None, "No mission plan is open; nothing was sent.")
             return
+        if self._refuseIncompletePlan(doc.plan):
+            return
+        # A complete plan can still be refused per vehicle, while one of its action
+        # servers runs another task; the fleet tab checks that and asks to send.
+        self.ui.tabFleetControl.sendPlanUnlessServerBusy(doc.plan, receivers)
+
+    @pyqtSlot(MissionPlan, set)
+    def onSendMissionPlanRequested(self, plan: MissionPlan, receivers: set[str]) -> None:
+        # Checked again: a plan held back by Override can be edited while it waits.
+        if self._refuseIncompletePlan(plan):
+            return
+        self._fleetContext.mqtt.onPublishMissionPlan(plan, receivers)
+
+    def _refuseIncompletePlan(self, plan: MissionPlan) -> bool:
+        """True, with the reason in the message bar, if the officer would refuse the plan."""
         # The officer refuses a TST with an empty seq or conc anywhere, as a plan that was
         # sent before it was finished, so such a plan is not sent at all.
-        if not doc.plan.tasks:
+        if not plan.tasks:
             iface.messageBar().pushWarning(None, "The mission plan has no tasks; nothing was sent.")
-            return
-        empty = doc.plan.empty_groups()
+            return True
+        empty = plan.empty_groups()
         if empty:
             names = ", ".join(f'"{group.description}"' for group in empty)
             iface.messageBar().pushWarning(None, f"Empty group {names} in the mission plan; nothing was sent.")
-            return
-        # A complete plan can still be refused per vehicle, while one of its action
-        # servers runs another task; the fleet tab checks that and sends.
-        self.ui.tabFleetControl.sendPlanUnlessServerBusy(doc.plan, receivers)
+            return True
+        return False
+
+    @pyqtSlot(str, str, str)
+    def onCommandRefused(self, vehicleTopic: str, command: str, reason: str) -> None:
+        # Refusals the plugin cannot predict, e.g. a mission it cannot see is still running.
+        vehicleName = vehicleTopic.split('/')[-1]
+        iface.messageBar().pushWarning(None, f"{vehicleName} refused {command}: {reason}")
 
     @pyqtSlot()
     def onSaveMissionPlan(self):

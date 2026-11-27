@@ -38,6 +38,8 @@ class FleetControlWidget(QFrame):
         # Overridden starts: vehicleTopic → (plan, the aborted tasks it waits out).
         # The officer refuses the plan until those tasks leave tasks-executing.
         self._plansAwaitingFreeServer: dict[str, tuple[MissionPlan, set[UUID]]] = {}
+        # Vehicles whose waiting plan was dropped when they went silent, until the next upload.
+        self._plansDroppedSilent: set[str] = set()
 
         self._selected: set[str] = set()
         self._collapsed: set[str] = set()
@@ -177,6 +179,8 @@ class FleetControlWidget(QFrame):
             text += f" · {hidden} silent, hidden"
         for vehicleTopic in sorted(self._plansAwaitingFreeServer):
             text += f" · {vehicleTopic.split('/')[-1]}: waiting to start"
+        for vehicleTopic in sorted(self._plansDroppedSilent):
+            text += f" · {vehicleTopic.split('/')[-1]}: dropped, vehicle went silent"
         self.ui.vehiclesSelectedLabel.setText(text)
 
     @pyqtSlot()
@@ -188,6 +192,7 @@ class FleetControlWidget(QFrame):
         plan: MissionPlan,
         vehicleTopics: set[str],
     ) -> None:
+        self._plansDroppedSilent -= vehicleTopics
         free: set[str] = set()
         blocking: dict[str, list[WaraPsExecutingTask]] = {}
         for vehicleTopic in vehicleTopics:
@@ -349,6 +354,9 @@ class FleetControlWidget(QFrame):
             return
         # A hidden vehicle must not stay selected, or commands would reach it unseen.
         card.setChecked(False)
+        # Nor may a plan held back by Override start on it unseen when it is heard again.
+        if self._plansAwaitingFreeServer.pop(vehicleTopic, None) is not None:
+            self._plansDroppedSilent.add(vehicleTopic)
         card.setVisible(False)
         self._restripe()
         self._refreshUiState()
