@@ -105,8 +105,12 @@ class SMaRCMissionControlPlugin(QObject):
         )
         self.missionControlAction.setText("Open Mission Control")
         self.menu.addAction(self.missionControlAction)
-        # Map objects stay on the broker (retained), so this only tidies the map until they are sent again.
-        self.menu.addAction("Clear map objects", self.fleetContext.mapObjects.clearMapObjects)
+        clearMapObjectsAction = self.menu.addAction(
+            "Clear map objects from this map",
+            self.fleetContext.mapObjects.clearMapObjects,
+        )
+        # Map objects stay on the broker (retained), so they are back on the next reconnect.
+        clearMapObjectsAction.setStatusTip("Map objects stay on the MQTT broker and come back when sent again")
         self.menu.addSeparator()
         self.toolbar.addAction(self.missionControlAction)
         

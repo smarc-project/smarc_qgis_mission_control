@@ -22,10 +22,12 @@ from qgis.core import (
     QgsVectorLayer,
 )
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import QObject, QTimer, QVariant, pyqtSlot
 from qgis.PyQt.QtGui import QColor
 
 from ..domain.mapobjects import MapObject, MapObjectShape, parseMapObject
+from .FleetMapManager import FleetMapManager
 
 # Red is kept for no-go zones; a message's own `color` still wins.
 DEFAULT_MAP_OBJECT_COLOR = '#1e90ff'
@@ -104,7 +106,8 @@ class MapObjectLayers(QObject):
 
     def removeMapObject(self, name: str) -> None:
         drawn = self._drawn.pop(name, None)
-        if drawn is None:
+        # Its layer is gone if the user removed it or started a new project.
+        if drawn is None or sip.isdeleted(drawn.layer):
             return
         drawn.layer.dataProvider().deleteFeatures([drawn.fid])
         drawn.layer.triggerRepaint()
@@ -128,17 +131,21 @@ class MapObjectLayers(QObject):
 
     def cleanup(self) -> None:
         self._expiryTimer.stop()
+        self._removeLayers()
+
+    def _removeLayers(self) -> None:
+        """Take our layers and group out of the project, skipping any already deleted."""
         self._drawn.clear()
-        if self._group is None:
-            return
         qgs = QgsProject.instance()
         wasDirty = qgs.isDirty()
-        try:
-            qgs.removeMapLayers([layer.id() for layer in set(self._layersByShape.values())])
-            qgs.layerTreeRoot().removeChildNode(self._group)
-        except RuntimeError:
-            # QGIS may have deleted them already while shutting down.
-            pass
+        for layer in set(self._layersByShape.values()):
+            # Removed by hand, or by Project > New / Exit before plugins unload.
+            if not sip.isdeleted(layer):
+                qgs.removeMapLayer(layer.id())
+        # A group left in the layer tree is removed during QGIS's own teardown,
+        # after its layer panel is gone, and that crashes QGIS on quit (#148).
+        if self._group is not None and not sip.isdeleted(self._group):
+            self._group.parent().removeChildNode(self._group)
         qgs.setDirty(wasDirty)
         self._layersByShape.clear()
         self._group = None
@@ -169,16 +176,32 @@ class MapObjectLayers(QObject):
     def _layerFor(self, shape: MapObjectShape) -> QgsVectorLayer:
         # Made on the first map object, so a session without any adds no empty
         # layers, and nothing is added before QGIS has finished starting.
-        if not self._layersByShape:
+        # Made again if the user removed any of them or started a new project;
+        # what was drawn is gone then, and comes back as it is sent again.
+        if not self._layersByShape or self._anyLayerDeleted():
+            self._removeLayers()
             self._setupLayers()
         return self._layersByShape[shape]
+
+    def _anyLayerDeleted(self) -> bool:
+        return sip.isdeleted(self._group) or any(
+            sip.isdeleted(layer) for layer in self._layersByShape.values()
+        )
+
+    def _groupIndex(self) -> int:
+        """Just below the vehicle positions, so vehicles and missions draw on top."""
+        root = QgsProject.instance().layerTreeRoot()
+        for index, node in enumerate(root.children()):
+            if node.name() == FleetMapManager.LAYER_NAME:
+                return index + 1
+        return 0
 
     def _setupLayers(self) -> None:
         qgs = QgsProject.instance()
         # Live map objects are not the user's work: adding their layers must not
         # make QGIS ask to save an otherwise untouched project on quit.
         wasDirty = qgs.isDirty()
-        self._group = qgs.layerTreeRoot().insertGroup(0, self.GROUP_NAME)
+        self._group = qgs.layerTreeRoot().insertGroup(self._groupIndex(), self.GROUP_NAME)
 
         pointLayer = self._addLayer('Point', self.POINT_LAYER_NAME, self._pointSymbol())
         pathLayer = self._addLayer('LineString', self.PATH_LAYER_NAME, self._pathSymbol())

@@ -8,6 +8,7 @@ same topic replaces the object; an empty one clears it, which is also how MQTT d
 arrives. Missing or 0 keeps it until it is replaced or cleared.
 """
 import json
+import math
 import re
 from dataclasses import dataclass
 
@@ -87,7 +88,7 @@ def parseMapObject(name: str, payload: bytes) -> MapObject:
         shape = MapObjectShape(data.get('type'))
     except ValueError as e:
         raise ValueError(f'unknown type {data.get("type")!r}') from e
-    if shape not in SHAPES_BY_NAME_SUFFIX[name[-2:]]:
+    if shape not in SHAPES_BY_NAME_SUFFIX.get(name[-2:], ()):
         raise ValueError(f'a {shape} cannot be sent on a {name[-2:]} topic')
 
     radius = None
@@ -100,14 +101,14 @@ def parseMapObject(name: str, payload: bytes) -> MapObject:
             latLons = [_latLon([data['lat'], data['lon']])]
         if shape == MapObjectShape.CIRCLE:
             radius = float(data['radius'])
-            if radius <= 0:
+            if not math.isfinite(radius) or radius <= 0:
                 raise ValueError(f'radius must be positive, got {radius}')
         duration = float(data.get('duration', 0))
     except KeyError as e:
         raise ValueError(f'a {shape} needs {e}') from e
     except TypeError as e:
         raise ValueError(str(e)) from e
-    if duration < 0:
+    if not math.isfinite(duration) or duration < 0:
         raise ValueError(f'duration must not be negative, got {duration}')
 
     color = data.get('color')

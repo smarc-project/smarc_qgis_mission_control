@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from qgis.core import Qgis, QgsApplication, QgsDistanceArea, QgsPointXY, QgsProject
 
+from src.context.FleetMapManager import FleetMapManager
 from src.context.MapObjectLayers import MapObjectLayers
 from src.context.MqttService import MqttService
 from src.domain.mapobjects import MapObjectShape, parseMapObject
@@ -160,6 +161,10 @@ def test_empty_message_clears_one_and_clear_removes_all(mapObjects):
     ("junk-P", _payload(type="area", area=[[0, 0], [0, 1], [1, 1]])),
     ("junk-P", _payload(type="point", lat=58.25, lon=11.45, color="red")),
     ("junk-P", _payload(type="point", lat=58.25, lon=11.45, duration=-1)),
+    ("junk-P", b'{"type": "point", "lat": 58.25, "lon": 11.45, "duration": NaN}'),
+    ("junk-P", b'{"type": "point", "lat": NaN, "lon": 11.45}'),
+    ("junk-A", b'{"type": "circle", "lat": 58.25, "lon": 11.45, "radius": Infinity}'),
+    ("junk-A", b'{"type": "circle", "lat": 58.25, "lon": 11.45, "radius": NaN}'),
 ])
 def test_bad_message_is_ignored_with_a_warning(mapObjects, warnings, name, payload):
     mapObjects.onMapObjectMessage("buoy-P", POINT)
@@ -186,3 +191,75 @@ def test_map_object_topics_reach_the_layers(qgis_app):
         mqtt.onMqttMessage(None, None, SimpleNamespace(topic=topic, payload=payload))
 
     assert heard == [("dive-A", CIRCLE), ("dive-A", b"")]
+
+
+def test_name_without_a_shape_suffix_is_a_value_error():
+    with pytest.raises(ValueError, match="cannot be sent"):
+        parseMapObject("buoy", POINT)
+
+
+def _group():
+    return QgsProject.instance().layerTreeRoot().findGroup(MapObjectLayers.GROUP_NAME)
+
+
+def test_user_removed_layer_is_made_again(mapObjects):
+    mapObjects.onMapObjectMessage("buoy-P", POINT)
+    mapObjects.onMapObjectMessage("survey-A", POLYGON)
+    [areas] = QgsProject.instance().mapLayersByName("Map areas")
+    QgsProject.instance().removeMapLayer(areas.id())
+
+    # Replacing and clearing an object on the removed layer must not raise.
+    mapObjects.onMapObjectMessage("survey-A", b"")
+    mapObjects.onMapObjectMessage("dive-A", CIRCLE)
+
+    assert set(_drawn("Map areas")) == {"dive-A"}
+    assert len(QgsProject.instance().mapLayersByName("Map points")) == 1
+    assert len(_group().findLayers()) == 3
+
+
+def test_new_project_and_removed_group_are_survived(mapObjects):
+    mapObjects.onMapObjectMessage("buoy-P", POINT)
+    QgsProject.instance().clear()
+    mapObjects.onMapObjectMessage("transit-R", LINE)
+    assert set(_drawn("Map paths")) == {"transit-R"}
+
+    root = QgsProject.instance().layerTreeRoot()
+    root.removeChildNode(_group())
+    mapObjects.onMapObjectMessage("buoy-P", POINT)
+    assert set(_drawn("Map points")) == {"buoy-P"}
+    assert _drawn("Map paths") == {}
+
+
+def test_unload_after_user_removed_one_layer_leaves_nothing(qgis_app):
+    mapObjects = MapObjectLayers(None)
+    mapObjects.onMapObjectMessage("buoy-P", POINT)
+    [points] = QgsProject.instance().mapLayersByName("Map points")
+    QgsProject.instance().removeMapLayer(points.id())
+
+    mapObjects.cleanup()
+
+    assert _group() is None
+    for name in ("Map points", "Map paths", "Map areas"):
+        assert QgsProject.instance().mapLayersByName(name) == []
+
+
+def test_group_sits_just_below_the_vehicles(qgis_app):
+    from qgis.core import QgsVectorLayer
+    QgsProject.instance().clear()
+    root = QgsProject.instance().layerTreeRoot()
+    root.insertGroup(0, "SMaRCMissions")
+    vehicles = QgsVectorLayer("point?crs=epsg:4326", FleetMapManager.LAYER_NAME, "memory")
+    QgsProject.instance().addMapLayer(vehicles, False)
+    root.insertLayer(0, vehicles)
+
+    mapObjects = MapObjectLayers(None)
+    mapObjects.onMapObjectMessage("buoy-P", POINT)
+    try:
+        assert [node.name() for node in root.children()] == [
+            FleetMapManager.LAYER_NAME,
+            MapObjectLayers.GROUP_NAME,
+            "SMaRCMissions",
+        ]
+    finally:
+        mapObjects.cleanup()
+        QgsProject.instance().clear()
