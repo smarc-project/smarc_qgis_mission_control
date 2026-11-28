@@ -105,6 +105,12 @@ class SMaRCMissionControlPlugin(QObject):
         )
         self.missionControlAction.setText("Open Mission Control")
         self.menu.addAction(self.missionControlAction)
+        clearMapObjectsAction = self.menu.addAction(
+            "Clear map objects from this map",
+            self.fleetContext.mapObjects.clearMapObjects,
+        )
+        # Map objects stay on the broker (retained), so they are back on the next reconnect.
+        clearMapObjectsAction.setStatusTip("Map objects stay on the MQTT broker and come back when sent again")
         self.menu.addSeparator()
         self.toolbar.addAction(self.missionControlAction)
         
@@ -184,6 +190,7 @@ class SMaRCMissionControlPlugin(QObject):
         # Clean up scratch layers created at runtime
         self.missionContext.cleanup()
         self.fleetContext.mapManager.cleanup()
+        self.fleetContext.mapObjects.cleanup()
 
         # TODO: can be cleaner
         # qgs = QgsProject.instance()

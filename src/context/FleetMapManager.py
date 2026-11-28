@@ -50,6 +50,8 @@ class FleetMapManager(QObject):
     vehicleUpdated = pyqtSignal(str)
 
     _waypointLayer: QgsVectorLayer | None = None
+    # Other layers find their place in the layer tree by this name.
+    LAYER_NAME = 'SMaRCVehiclePositionLayer'
 
     def __init__(self, fleetState: FleetState, parent: QObject | None):
         super().__init__(parent)
@@ -81,13 +83,13 @@ class FleetMapManager(QObject):
         # ask to save an otherwise untouched project on quit.
         wasDirty = qgs.isDirty()
         # Remove any stale layers
-        matching = qgs.mapLayersByName('SMaRCVehiclePositionLayer')
+        matching = qgs.mapLayersByName(self.LAYER_NAME)
         qgs.removeMapLayers([l.id() for l in matching])
 
         # Setup our layer
         self._waypointLayer = QgsVectorLayer(
             'point?crs=epsg:4326',
-            'SMaRCVehiclePositionLayer',
+            self.LAYER_NAME,
             'memory'
         )
         self._waypointLayer.dataProvider().addAttributes([

@@ -16,6 +16,7 @@ sys.path.insert(0, path)
 import paho.mqtt.client as mqtt
 
 from ..compat import StrEnum
+from ..domain.mapobjects import mapObjectNameFromTopic
 from ..domain.missionplan import MissionPlan
 from ..domain.waraps import WaraPsAvailableTask, WaraPsExecutingTask
 from ..domain.waypoints import GeoPoint
@@ -51,6 +52,8 @@ class MqttConnectionState(StrEnum):
 
 class MqttService(QObject):
     connectionStateChanged = pyqtSignal(MqttConnectionState)
+    # A WARA-PS map object's name and payload; an empty payload clears it.
+    mapObjectMessage = pyqtSignal(str, bytes)
     vehicleHeartbeat = pyqtSignal(VehicleHeartbeatEvent)
     vehicleSensorEvent = pyqtSignal(VehicleSensorEvent)
     vehicleTaskStateEvent = pyqtSignal(VehicleTaskStateEvent)
@@ -156,6 +159,11 @@ class MqttService(QObject):
         print(f"MQTT disconnected: {reason_code}")
 
     def onMqttMessage(self, client, userdata, message):
+        # Map objects belong to no vehicle, so they are not under a unit's topic.
+        mapObjectName = mapObjectNameFromTopic(message.topic)
+        if mapObjectName is not None:
+            self.mapObjectMessage.emit(mapObjectName, bytes(message.payload))
+            return
         match = self.mqttTopicPattern.match(message.topic)
         if not match:
             # Not something we support yet
