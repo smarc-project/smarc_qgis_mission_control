@@ -2,6 +2,7 @@ from qgis.PyQt.QtCore import QObject
 
 from .FleetMapManager import FleetMapManager
 from .FleetState import FleetState
+from .MapObjectLayers import MapObjectLayers
 from .MqttService import MqttService
 
 
@@ -12,3 +13,5 @@ class FleetContext(QObject):
         self.mqtt = MqttService(self)
         self.state = FleetState(self.mqtt, self)
         self.mapManager = FleetMapManager(self.state, self)
+        self.mapObjects = MapObjectLayers(self)
+        self.mqtt.mapObjectMessage.connect(self.mapObjects.onMapObjectMessage)
