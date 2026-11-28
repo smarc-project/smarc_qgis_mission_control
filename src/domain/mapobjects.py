@@ -102,14 +102,14 @@ def parseMapObject(name: str, payload: bytes) -> MapObject:
         if shape == MapObjectShape.CIRCLE:
             radius = float(data['radius'])
             if not math.isfinite(radius) or radius <= 0:
-                raise ValueError(f'radius must be positive, got {radius}')
+                raise ValueError(f'radius must be a positive number, got {radius}')
         duration = float(data.get('duration', 0))
     except KeyError as e:
         raise ValueError(f'a {shape} needs {e}') from e
     except TypeError as e:
         raise ValueError(str(e)) from e
     if not math.isfinite(duration) or duration < 0:
-        raise ValueError(f'duration must not be negative, got {duration}')
+        raise ValueError(f'duration must be a number of seconds, 0 or more, got {duration}')
 
     color = data.get('color')
     if color is not None and not (isinstance(color, str) and webColorPattern.match(color)):
